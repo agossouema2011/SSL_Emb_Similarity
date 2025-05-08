@@ -5,10 +5,22 @@ This is an official implementation for ICIP2025 paper ["IMPROVING PSEUDO-LABELS 
 <!-- Conference on Computer Vision and Pattern Recognition (CVPR) 2022 Paper.</br> -->
 
 ## Introduction
-The overall of our **DTA**. 
+
+The overall of our **Bloc Diagram**. 
 <p align="center">
-<img src="teaser/ActiveTeacher.png">
+<img src="blockDiagram.png">
 </p>
+
+Our Domain-Tailored Augmentations **DTA**. 
+<p align="center">
+<img src="DTA.png">
+</p>
+
+**Better pseudo-labels than Active Teacher**. 
+<p align="center">
+<img src="compareWithAT.png">
+</p>
+
 
 
 ## Installation
