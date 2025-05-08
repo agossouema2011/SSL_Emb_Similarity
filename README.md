@@ -44,7 +44,7 @@ datasets/
      .....
     set9/
       images.jpg
-
+```
 [Use Custom Datasets](https://detectron2.readthedocs.io/tutorials/datasets.html) gives a deeper dive on how to use `DatasetCatalog` and `MetadataCatalog`, and how to add new datasets to them.
 
 ## Training (34.79% label data for example)
