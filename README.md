@@ -99,7 +99,6 @@ python tools/inference_for_active_pick_TTA_AS.py\
 python tools/TTA_AS_generate_pick_merge_random_data_partition.py \
     --random_file dataseed/COCO_supervision.txt \
     --random_percent 34.79\
-    --indicator_file results/c_coco/random_maxnorm.txt \
     --pick_percent 35.21\
     --save_file dataseed/coco_pick/pick_maxnorm+random.txt\
     --static_file temp/coco/static_by_random.json/static_by_random.json \
