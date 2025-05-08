@@ -88,10 +88,10 @@ python tools/inference_for_active_pick_TTA_AS.py\
     --config configs/coco/faster_rcnn_R_50_FPN_sup35_run1.yaml \
     
 
-python tools/inference_for_active_pick_TTA_AS.py\
-    --static_file temp/coco/static_by_random.json \
-    --model_weights output/coco/faster_rcnn_R_50_FPN_sup35_run1_16bs/model_best.pth \
-    --config configs/coco/faster_rcnn_R_50_FPN_sup35_run1.yaml \
+python tools/TTA_AS_active_pick_evaluation.py \
+    --static_file temp/coco/static_by_random.json/static_by_random.json \
+    --indicator_file results/coco/random_maxnorm
+    
 ```
 
 ### Step 3、Use the indictor file from step 2 to generate pick data and merge random data
@@ -99,6 +99,7 @@ python tools/inference_for_active_pick_TTA_AS.py\
 python tools/TTA_AS_generate_pick_merge_random_data_partition.py \
     --random_file dataseed/COCO_supervision.txt \
     --random_percent 34.79\
+    --indicator_file results/coco/random_maxnorm.txt \
     --pick_percent 35.21\
     --save_file dataseed/coco_pick/pick_maxnorm+random.txt\
     --static_file temp/coco/static_by_random.json/static_by_random.json \
@@ -107,21 +108,33 @@ python tools/TTA_AS_generate_pick_merge_random_data_partition.py \
 
 ### Step 4、Train a model from scratch using the 10% data partition from step 3
 ```
-python tools/train_net.py \
+python tools/TTA_SA_GT_train_net.py \
       --num-gpus 1 \
       --config configs/coco/faster_rcnn_R_50_FPN_sup70_run1.yaml \
-       SOLVER.IMG_PER_BATCH_LABEL 16 SOLVER.IMG_PER_BATCH_UNLABEL 16 OUTPUT_DIR output/coco/result_final_faster_rcnn_R_50_FPN_sup70_run1_16bs DATALOADER.RANDOM_DATA_SEED_PATH dataseed/coco_pick/pick_maxnorm+random.txt
-      
-
-
+       SOLVER.IMG_PER_BATCH_LABEL 16 SOLVER.IMG_PER_BATCH_UNLABEL 16 OUTPUT_DIR output/coco/result_final_faster_rcnn_R_50_FPN_sup70_run1_16bs DATALOADER.RANDOM_DATA_SEED_PATH dataseed/coco_pick/pick_maxnorm+random.txt   
+  
 ```
 
 ## Evaluation
 ```
-python tools/TTA_AS_active_pick_evaluation.py \
-    --static_file temp/coco/static_by_random.json/static_by_random.json \
-    --indicator_file results/c_coco/random_maxnorm
+python tools/train_net.py \
+      --eval-only \
+      --num-gpus 1 \
+      --config configs/coco/faster_rcnn_R_50_FPN_sup70_run1.yaml \
+       SOLVER.IMG_PER_BATCH_LABEL 16 SOLVER.IMG_PER_BATCH_UNLABEL 16  MODEL.WEIGHTS output/coco/result_final_faster_rcnn_R_50_FPN_sup70_run1_16bs/model_best.pth
+
 ```
+## Evaluation for each set :
+Note: You should update the "register_coco_instances()" function with the corresponding directions for the images and the annotations .json file of the concerned 'set' in the file  'train_net_sets.py' 
+```
+python tools/train_net_sets.py \
+      --eval-only \
+      --num-gpus 1 \
+      --config configs/coco/faster_rcnn_R_50_FPN_sup70_run1.yaml \
+       SOLVER.IMG_PER_BATCH_LABEL 16 SOLVER.IMG_PER_BATCH_UNLABEL 16  MODEL.WEIGHTS output/coco/result_final_faster_rcnn_R_50_FPN_sup70_run1_16bs/model_best.pth
+
+```
+
 
 ## Results
 - The results on **different datasets** is shown as below:
