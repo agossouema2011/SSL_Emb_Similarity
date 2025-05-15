@@ -146,32 +146,19 @@ python tools/train_net_sets.py \
 ## Results
 - The results on **different datasets** is shown as below:
 
-\begin{table*}[htp]
-\vspace{-5mm}
-\centering
-\caption{Models performances comparison on the SEE-AI Dataset. Ground Truth (GT), Pseudo-Labeling (PL). Highest value for each of the metrics are in bold.}
-\small
-\begin{tabular}{lcccccccccc}
-\hline
-\hline
- &GT&AS&Annotation& AP & AP50 & AP75 & APs & APm & APl \\ \hline  
- & & & & \multicolumn{6}{c}{SEE-AI Dataset}\\
- \hline
-Faster RCNN \cite{ren2015faster} & 100\%& -- & -- &  33.60& 61.30 & 33.20& 6.00 & 15.80&  36.80\\ %\hline
-Unbiased Teacher \cite{liu2021unbiased}& 34.79\%& --& 100\% PL& 30.63 &  55.92&28.81& 16.79& 17.37&33.72 \\ %\hline
-Active  Teacher \cite{mi2022active}& 34.79\%& 35.21\% & GT & 38.65&69.91&\textbf{37.89}&\textbf{19.82}& 26.21& 41.27 \\ %\hline
- DTA + AS (Ours)& 34.79\%& 35.21\% & GT &\textbf{40.09}&\textbf{73.00}&37.44&15.98&\textbf{26.89}&\textbf{42.34}\\ 
-\hline
-& & & & \multicolumn{6}{c}{Kvasir-Capsule}\\
-\hline
-Faster RCNN \cite{ren2015faster} & 100\%& -- & -- & 57.30&81.70& 65.70&23.70& 49.60&61.30 \\ %\hline
-Unbiased Teacher \cite{liu2021unbiased}& 34.79\%& --& 100\% PL&  61.35& 91.28& 69.32&39.30&  55.76&  65.20 \\ %\hline
-Active Teacher \cite{mi2022active}& 34.79\%& 35.21\% & GT & 63.63& \textbf{94.02}&70.95&  35.33&58.84 &  69.62 \\ %\hline
- DTA + AS (Ours)& 34.79\%& 35.21\% & GT &  \textbf{64.17}  &   93.25 &\textbf{74.32}& \textbf{43.45}& \textbf{58.89} &\textbf{70.73}\\ \hline
-\hline
-\end{tabular}
-\label{tab1}
-\end{table*}
+|                                         | GT      | AS      | Annotation | AP                                 | AP50           | AP75           | APs            | APm            | APl            |
+|-----------------------------------------|---------|---------|------------|------------------------------------|----------------|----------------|----------------|----------------|----------------|
+|                                         |         |         |            | \multicolumn{6}{c}{SEE-AI Dataset} |
+| Faster RCNN         | 100\%   | --      | --         | 33.60                              | 61.30          | 33.20          | 6.00           | 15.80          | 36.80          |
+| Unbiased Teacher  | 34.79\% | --      | 100\% PL   | 30.63                              | 55.92          | 28.81          | 16.79          | 17.37          | 33.72          |
+| Active  Teacher      | 34.79\% | 35.21\% | GT         | 38.65                              | 69.91          | extbf{37.89}   | 	extbf{19.82} | 26.21          | 41.27          |
+| DTA + AS (Ours)                         | 34.79\% | 35.21\% | GT         | \textbf{40.09}                     | \textbf{73.00} | 37.44          | 15.98          | \textbf{26.89} | \textbf{42.34} |
+|                                         |         |         |            | \multicolumn{6}{c}{Kvasir-Capsule} |
+| Faster RCNN         | 100\%   | --      | --         | 57.30                              | 81.70          | 65.70          | 23.70          | 49.60          | 61.30          |
+| Unbiased Teacher  | 34.79\% | --      | 100\% PL   | 61.35                              | 91.28          | 69.32          | 39.30          | 55.76          | 65.20          |
+| Active Teacher       | 34.79\% | 35.21\% | GT         | 63.63                              | \textbf{94.02} | 70.95          | 35.33          | 58.84          | 69.62          |
+| DTA + AS (Ours)                         | 34.79\% | 35.21\% | GT         | \textbf{64.17}                     | 93.25          | \textbf{74.32} | \textbf{43.45} | \textbf{58.89} | \textbf{70.73} |
+
 
 <table border="0" width="800">
 <tr>
