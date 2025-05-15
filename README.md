@@ -30,11 +30,15 @@ Our Domain-Tailored Augmentations **DTA**.
 
 - Install **detectron2** following the [instructions](https://detectron2.readthedocs.io/tutorials/install.html).
 
-
+## Important notes
+- Update "NUM_CLASSES: 8" in 'configs/coco/Base-RCNN-FPN.yaml' to fit the number of class of your dataset.
+- You can also update other parameters in the configuration file 'configs/coco/Base-RCNN-FPN.yaml' or 'configs/Base-RCNN-FPN.yaml'
+- Update "metadata" variable in 'tools/train_net.py' and 'tools/train_net_sets.py' according to the classes names of your dataset
+  
 ## Dataset Preparation
 
 ### Custom dataset
-Download the two daatsets we used here :
+Download our folder containing the two datasets (Kvasir Capsule and SEE-AI) we used here :
 After downloading extract 
 Then, copy the concerned dataset content in the folder "datasets". For testing we provide 9 subsets. The .json files contains the annotations.
 The expected files structure is :
@@ -124,7 +128,7 @@ python tools/train_net.py \
       --eval-only \
       --num-gpus 1 \
       --config configs/coco/faster_rcnn_R_50_FPN_sup70_run1.yaml \
-       SOLVER.IMG_PER_BATCH_LABEL 16 SOLVER.IMG_PER_BATCH_UNLABEL 16  MODEL.WEIGHTS output/coco/result_final_faster_rcnn_R_50_FPN_sup70_run1_16bs/model_best.pth
+       SOLVER.IMG_PER_BATCH_LABEL 16 SOLVER.IMG_PER_BATCH_UNLABEL 16  MODEL.WEIGHTS output/coco/result_final_faster_rcnn_R_50_FPN_sup70_run1_16bs/model_best.pth OUTPUT_DIR output/results
 
 ```
 ## Evaluation for each set :
@@ -134,7 +138,7 @@ python tools/train_net_sets.py \
       --eval-only \
       --num-gpus 1 \
       --config configs/coco/faster_rcnn_R_50_FPN_sup70_run1.yaml \
-       SOLVER.IMG_PER_BATCH_LABEL 16 SOLVER.IMG_PER_BATCH_UNLABEL 16  MODEL.WEIGHTS output/coco/result_final_faster_rcnn_R_50_FPN_sup70_run1_16bs/model_best.pth
+       SOLVER.IMG_PER_BATCH_LABEL 16 SOLVER.IMG_PER_BATCH_UNLABEL 16  MODEL.WEIGHTS output/coco/result_final_faster_rcnn_R_50_FPN_sup70_run1_16bs/model_best.pth  OUTPUT_DIR output/set_name
 
 ```
 
