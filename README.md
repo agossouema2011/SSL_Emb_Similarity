@@ -21,8 +21,11 @@ Our Domain-Tailored Augmentations **DTA**.
 <img src="compareWithAT.png">
 </p>
 
-
-
+## Important notes
+- Update "NUM_CLASSES: 8" in 'configs/coco/Base-RCNN-FPN.yaml' to fit the number of class of your dataset.
+- You can also update other parameters in the configuration file 'configs/coco/Base-RCNN-FPN.yaml' or 'configs/Base-RCNN-FPN.yaml'
+- Update "metadata" variable in 'tools/train_net.py' and 'tools/train_net_sets.py' according to the classes names of your dataset
+  
 ## Installation
 
 - Install **detectron2** following the [instructions](https://detectron2.readthedocs.io/tutorials/install.html).
