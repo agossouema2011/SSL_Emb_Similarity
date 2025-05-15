@@ -148,73 +148,19 @@ python tools/train_net_sets.py \
 
 |                                         | GT      | AS      | Annotation | AP                                 | AP50           | AP75           | APs            | APm            | APl            |
 |-----------------------------------------|---------|---------|------------|------------------------------------|----------------|----------------|----------------|----------------|----------------|
-|                                         |         |         |            | \multicolumn{6}{c}{SEE-AI Dataset} |
+|                                         |         |         |            | SEE-AI Dataset |
 | Faster RCNN         | 100\%   | --      | --         | 33.60                              | 61.30          | 33.20          | 6.00           | 15.80          | 36.80          |
 | Unbiased Teacher  | 34.79\% | --      | 100\% PL   | 30.63                              | 55.92          | 28.81          | 16.79          | 17.37          | 33.72          |
-| Active  Teacher      | 34.79\% | 35.21\% | GT         | 38.65                              | 69.91          | extbf{37.89}   | 	extbf{19.82} | 26.21          | 41.27          |
-| DTA + AS (Ours)                         | 34.79\% | 35.21\% | GT         | \textbf{40.09}                     | \textbf{73.00} | 37.44          | 15.98          | \textbf{26.89} | \textbf{42.34} |
-|                                         |         |         |            | \multicolumn{6}{c}{Kvasir-Capsule} |
+| Active  Teacher      | 34.79\% | 35.21\% | GT         | 38.65                              | 69.91          | 37.89   | 	19.82 | 26.21          | 41.27          |
+| DTA + AS (Ours)                         | 34.79\% | 35.21\% | GT         | 40.09                    | 73.00 | 37.44          | 15.98          | 26.89 | 42.34 |
+|                                         |         |         |            | Kvasir-Capsule |
 | Faster RCNN         | 100\%   | --      | --         | 57.30                              | 81.70          | 65.70          | 23.70          | 49.60          | 61.30          |
 | Unbiased Teacher  | 34.79\% | --      | 100\% PL   | 61.35                              | 91.28          | 69.32          | 39.30          | 55.76          | 65.20          |
-| Active Teacher       | 34.79\% | 35.21\% | GT         | 63.63                              | \textbf{94.02} | 70.95          | 35.33          | 58.84          | 69.62          |
-| DTA + AS (Ours)                         | 34.79\% | 35.21\% | GT         | \textbf{64.17}                     | 93.25          | \textbf{74.32} | \textbf{43.45} | \textbf{58.89} | \textbf{70.73} |
+| Active Teacher       | 34.79\% | 35.21\% | GT         | 63.63                              | 94.02 | 70.95          | 35.33          | 58.84          | 69.62          |
+| DTA + AS (Ours)                         | 34.79\% | 35.21\% | GT         | 64.17                    | 93.25          | 74.32 | 43.45 | 58.89 | 70.73 |
 
 
-<table border="0" width="800">
-<tr>
-	<td width="25%" align="center"> <b> Models </b> </td>
-	<td width="25%" align="center"> <b> Datasets </b> </td>
-	<td width="15%" align="center"> <b> Labels </b> </td>
-	<td width="25%" align="center"> <b> Supervision(mAP) </b> </td>
-	<td width="25%" align="center"> <b> Ours(mAP) </b> </td>
-</tr>
-	
-<tr>
-	<td width="25" align="center" rowspan="9"> Res50-FPN</td>
-	<td width="25%" align="center" rowspan="5"> COCO </td>
-	<td width="15%" align="center"> 1% </td>
-	<td width="25%" align="center" rowspan="5"> 37.63 </td>
-	<td width="25%" align="center"> 22.20 </td>
-</tr>
-<tr>
-	<td width="15%" align="center"> 2% </td>
-	<td width="25%" align="center"> 24.99 </td>
-</tr>
-<tr>
-	<td width="15%" align="center"> 5% </td>
-	<td width="25%" align="center"> 30.07 </td>
-</tr>
-<tr>
-	<td width="15%" align="center"> 10% </td>
-	<td width="25%" align="center"> 32.58 </td>
-</tr>
-<tr>
-	<td width="15%" align="center"> 20% </td>
-	<td width="25%" align="center"> 35.49 </td>
-</tr>
 
-<tr>
-	<td width="25%" align="center" rowspan="3"> VOC07+12 </td>
-	<td width="15%" align="center"> 5% </td>
-	<td width="25%" align="center" rowspan="3"> 48.62 </td>
-	<td width="25%" align="center"> 41.85 </td>
-</tr>
-<tr>
-	<td width="15%" align="center"> 10% </td>
-	<td width="25%" align="center"> 46.77 </td>
-</tr>
-<tr>
-	<td width="15%" align="center"> 15% </td>
-	<td width="25%" align="center"> 49.73 </td>
-</tr>
-	
-<tr>
-	<td width="25%" align="center"> SODA </td>
-	<td width="15%" align="center"> 10% </td>
-	<td width="25%" align="center"> 34.52 </td>
-	<td width="25%" align="center"> 33.32 </td>
-</tr>
-</table>
 	
 ## Citing Active Teacher
 
