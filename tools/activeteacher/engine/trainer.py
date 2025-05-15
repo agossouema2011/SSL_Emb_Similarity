@@ -33,87 +33,7 @@ from activeteacher.modeling.meta_arch.ts_ensemble import EnsembleTSModel
 from activeteacher.checkpoint.detection_checkpoint import DetectionTSCheckpointer
 from activeteacher.solver.build import build_lr_scheduler
 
-from torchvision.transforms import v2
 
-#from ensemble_boxes import *  # package to be able to use weighted boxes fusion, nms,soft_nms or non_maximum_weighted
-# Get Weighted Boxes funsion codes from https://github.com/ZFTurbo/Weighted-Boxes-Fusion, Reference bellow
-"""
-@article{solovyev2021weighted,
-  title={Weighted boxes fusion: Ensembling boxes from different object detection models},
-  author={Solovyev, Roman and Wang, Weimin and Gabruseva, Tatiana},
-  journal={Image and Vision Computing},
-  pages={1-6},
-  year={2021},
-  publisher={Elsevier}
-}
-"""
-
-from odach import *
-
-#------------------------------------ functions for CutMix ------------------------
-# got the code from https://pmgautam.com/posts/augmentations-visually-explained.html
-
-
-class Cutmix:
-    def __init__(self, img1, img2, lbl1, lbl2):
-        self.img1 = img1
-        self.img2 = img2
-        self.lbl1 = lbl1
-        self.lbl2 = lbl2
-    
-    def __call__(self):
-        # sample bounding box B
-        alpha = 1
-        lam = np.random.beta(alpha, alpha)
-        h, w, c = self.img1.shape
-        
-        r_x = np.random.randint(0, w)
-        r_y = np.random.randint(0, h)
-        r_w = np.int32(w * np.sqrt(1 - lam))
-        r_h = np.int32(h * np.sqrt(1 - lam))
-        
-        mid_x, mid_y = r_w//2, r_h//2
-        
-        point1_x = np.clip(r_x - mid_x, 0, w)
-        point2_x = np.clip(r_x + mid_x, 0, w)
-        
-        point1_y = np.clip(r_y - mid_y, 0, h)
-        point2_y = np.clip(r_y + mid_y, 0, h)
-        
-        # refer to paper to see how M is cimputed, in short it is to make the ratio of mixing images and labels same
-        M = np.ones(self.img1.shape)
-        M[point1_x:point2_x, point1_y:point2_y, :] = 0
-        
-        
-        img1= self.img1
-        img2= self.img2
-        
-        the_img1=self.img1.numpy()
-        the_img2=self.img2.numpy()
-        the_img1_reshaped=[]
-        the_img2_reshaped=[]
-        cut_mix_img=[]
-        
-        print("--------------SIZE=",np.shape(the_img1),np.shape(the_img2))
-        if np.shape(the_img1)[1]< np.shape(the_img2)[1]:
-            print("----------------Hello1")
-            the_img1_reshaped=np.reshape(the_img1, (self.img2.shape[0],self.img2.shape[1],self.img2.shape[2])) # convert image1 size to the size of image2
-            cut_mix_img = M * the_img1_reshaped + (1 - M) * the_img2
-        if np.shape(the_img2)[1]< np.shape(the_img1)[1]:
-            print("-------------Hello2")
-            the_img2_reshaped=np.reshape(the_img2, (self.img1.shape[0],self.img1.shape[1],self.img1.shape[2])) # convert image2 size to the size of image1
-            cut_mix_img = M * the_img1 + (1 - M) * the_img2_reshaped
-            
-            
-        print("--------------SIZE=",np.shape(the_img1_reshaped),np.shape(the_img2_reshaped))
-        
-        cut_mix_label = lam * self.lbl1 + (1 - lam) * self.lbl2
-        
-        return cut_mix_img, cut_mix_label
-        
-#-------------------------- End functions for cutMix ----------------------------------------------------
-    
-    
 class ActiveTeacherTrainer(DefaultTrainer):
     def __init__(self, cfg):
         """
@@ -293,7 +213,6 @@ class ActiveTeacherTrainer(DefaultTrainer):
             new_proposal_inst.objectness_logits = proposal_bbox_inst.objectness_logits[
                 valid_map
             ]
-        
         elif proposal_type == "roih":
             valid_map = proposal_bbox_inst.scores > thres
 
@@ -339,82 +258,6 @@ class ActiveTeacherTrainer(DefaultTrainer):
             list_instances.append(proposal_bbox_inst)
         num_proposal_output = num_proposal_output / len(proposals_rpn_unsup_k)
         return list_instances, num_proposal_output
-    
-    
-    
-    def process_pseudo_label_wbf(
-        self, proposals_rpn_unsup_k, cur_threshold
-    ):
-        list_instances = []
-        num_proposal_output = 0.0
-        
-        iou_thr = 0.5
-        
-        #print("---------Type proposal_bboxes=",type(proposals_rpn_unsup_k), "\n------- proposal_bboxes=",proposals_rpn_unsup_k,"\n----------")
-        
-        boxes_list=[]
-        labels_list=[]
-        scores_list=[]
-        image_shape =[]
-        
-        for ii in range(len(proposals_rpn_unsup_k)):
-            theboxes=proposals_rpn_unsup_k[ii].pred_boxes.tensor.tolist()
-            #print("---------TYPE theboxes=",proposals_rpn_unsup_k[ii].pred_boxes.tensor,"\n----------")
-            
-            image_shape1=proposals_rpn_unsup_k[ii].image_size 
-            image_shape.append(image_shape1)
-            # scale box to 0-1
-            for kk in range(len(theboxes)):
-                theboxes[kk][0] /= image_shape1[0]
-                theboxes[kk][2] /= image_shape1[0]
-                theboxes[kk][1] /= image_shape1[1]
-                theboxes[kk][3] /= image_shape1[1]
-            boxes_list.append(np.array(theboxes, dtype='float32'))
-            scores_list.append(np.array( proposals_rpn_unsup_k[ii].scores.tolist(), dtype='float32'))
-            labels_list.append(np.array( proposals_rpn_unsup_k[ii].pred_classes.tolist(), dtype='int32'))
-
-        #print("---------Type boxes_list=",type(boxes_list), "\n-------Type scores_list=",type(scores_list),"\n------- Type labels_list=", type(labels_list),"\n----------")
-        #print("---------boxes_list=",boxes_list, "\n-------scores_list=",scores_list,"\n------- labels_list=", labels_list,"\n----------")
-            
-            
-        # Merge boxes for single model predictions
-       
-        boxes, scores, labels = weighted_boxes_fusion(boxes_list, scores_list, labels_list, weights=None, iou_thr=iou_thr, skip_box_thr=0.0)
-            
-        #print("---------Type boxes=",type(boxes), "\n-------Type scores=",type(scores),"\n------- Type labels=", type(labels),"\n----------")
-        #print("---------boxes=",boxes, "\n-------scores=",scores,"\n------- labels=", labels,"\n----------")
-       
-        # create box
-       
-        # create instances containing boxes and gt_classes
-        
-        print("---------image_shape=",image_shape,"\n----------")
-        
-        for jj in range(len(boxes)):
-            #print("------jj=",jj," ---image_shape=",image_shape[jj],"\n----------")
-            new_proposal_inst = Instances(image_shape[jj])
-            #new_bbox_loc = proposal_bbox_inst.pred_boxes.tensor[valid_map, :]
-           
-            boxes[jj][0] *= image_shape[jj][0]
-            boxes[jj][2] *= image_shape[jj][0]
-            boxes[jj][1] *= image_shape[jj][1]
-            boxes[jj][3] *= image_shape[jj][1]
-            
-            tab=[]
-            tab.append(boxes[jj]) # convert into list of array
-            arr = np.array(tab) 
-            new_bbox_loc = torch.from_numpy(arr)
-            #print("---------new_bbox_loc=",new_bbox_loc,"\n----------")
-            new_boxes = Boxes(new_bbox_loc)
-            new_proposal_inst.gt_boxes = new_boxes   # add boxes to instances
-            new_proposal_inst.gt_classes = labels[jj]
-            new_proposal_inst.scores = scores[jj]
-            num_proposal_output += len(new_proposal_inst)
-            list_instances.append(new_proposal_inst)
-            
-        num_proposal_output = num_proposal_output / len(proposals_rpn_unsup_k)
-        return list_instances, num_proposal_output
-        
 
     def remove_label(self, label_data):
         for label_datum in label_data:
@@ -435,9 +278,7 @@ class ActiveTeacherTrainer(DefaultTrainer):
         self._trainer.iter = self.iter
         assert self.model.training, "[ActiveTeacherTrainer] model was changed to eval mode!"
         start = time.perf_counter()
-        
         data = next(self._trainer._data_loader_iter)
-        
         # data_q and data_k from different augmentations (q:strong, k:weak)
         # label_strong, label_weak, unlabed_strong, unlabled_weak
         label_data_q, label_data_k, unlabel_data_q, unlabel_data_k = data
@@ -446,55 +287,12 @@ class ActiveTeacherTrainer(DefaultTrainer):
         # remove unlabeled data labels
         unlabel_data_q = self.remove_label(unlabel_data_q)
         unlabel_data_k = self.remove_label(unlabel_data_k)
-        
-        """
-        # ------------------------ CutMix -----------------------------------------------------------------
-        NUM_CLASSES=self.cfg.MODEL.ROI_HEADS.NUM_CLASSES
-        
-        def labels_getter(batch):
-            Rsize=len(batch)
-            images=[]
-            labels=[]
-            for ii in range(Rsize):
-                #images.append(batch[ii]["image"])
-                label=batch[ii]["instances"].gt_classes
-                labels.append(label.item())
-            print("labels=",labels,"_________________")
-            Tlabels=torch.FloatTensor(labels) # convert labels list to tensor list
-            print("Tlabels=",Tlabels,"_________________")
-            return Tlabels
-        
-        result= v2.CutMix(num_classes=NUM_CLASSES, labels_getter=labels_getter)(label_data_q)
-        print("-----------------------Results=",type(result),"-------------Results=",result,"_________________")
-        label_data_q.extend(result)  # add mix augmentation to strong augmentation for labeled data
-        """
-        """
-        # ----------------------------- Generate CutMix images for label set ------------------------------------
-        # Let's use the first image of the batch as the input image to be augmented
-        print("label_data_q0=",label_data_q[0],"_________________")
-        image_batch=[]
-        image_batch_labels=[]
-        for ii in range(len(label_data_q)):
-            image_batch.append(label_data_q[ii]["image"])
-            label=label_data_q[ii]["instances"].gt_classes
-            image_batch_labels.append(label.item())
-            
-        print("image_batch=",image_batch,"_________________")
-        print("image_batch_labels=",image_batch_labels,"_________________")
-        
-        cut_mix_img, cut_mix_lbl = Cutmix(image_batch[0], image_batch[1], image_batch_labels[0], image_batch_labels[1])()
-        
-        print("cut_mix_img=",cut_mix_img,"_________________")
-        print("cut_mix_lbl=",cut_mix_lbl,"_________________")
-        #-------------------------------------------- End CutMix -----------------------------------------------------------------------------------
-        """
-       
+
         # burn-in stage (supervised training with labeled data)
         if self.iter < self.cfg.SEMISUPNET.BURN_UP_STEP:
 
             # input both strong and weak supervised data into model
             label_data_q.extend(label_data_k)
-            
             record_dict, _, _, _ = self.model(
                 label_data_q, branch="supervised")
 
@@ -540,20 +338,10 @@ class ActiveTeacherTrainer(DefaultTrainer):
                 proposals_rpn_unsup_k, cur_threshold, "rpn", "thresholding"
             )
             joint_proposal_dict["proposals_pseudo_rpn"] = pesudo_proposals_rpn_unsup_k
-            
-            """
             # Pseudo_labeling for ROI head (bbox location/objectness)
             pesudo_proposals_roih_unsup_k, _ = self.process_pseudo_label(
                 proposals_roih_unsup_k, cur_threshold, "roih", "thresholding"
             )
-            
-            """
-            # Pseudo_labeling with wbf (bbox location/objectness)
-            pesudo_proposals_roih_unsup_k, _ = self.process_pseudo_label_wbf(
-                proposals_roih_unsup_k, cur_threshold
-            )
-            
-            
             joint_proposal_dict["proposals_pseudo_roih"] = pesudo_proposals_roih_unsup_k
 
             #  add pseudo-label to unlabeled data
