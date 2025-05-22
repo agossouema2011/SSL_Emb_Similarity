@@ -161,25 +161,13 @@ python tools/train_net_sets.py \
 
 
 
-	
-## Citing Active Teacher
-
-If you find Active Teacher useful in your research, please consider citing:
-
-```
-@InProceedings{ActiveTeacher_2022_CVPR,
-	author = {Mi, Peng and Lin, Jianghang and Zhou, Yiyi and Shen, Yunhang and Luo, Gen and Sun, Xiaoshuai and Cao, Liujuan and Fu, Rongrong and Xu, Qiang and Ji, Rongrong},
-	title = {Active Teacher for Semi-Supervised Object Detection},
-	booktitle = {The IEEE Conference on Computer Vision and Pattern Recognition (CVPR)},
-	year = {2022},
-}   
-```
 
 ## License
 
 Active Teacher is released under the [Apache 2.0 license](LICENSE).
 
 ## Acknowledgement
+-   [Active teacher](https://github.com/HunterJ-Lin/ActiveTeacher/tree/main)
 -   [STAC](https://github.com/google-research/ssl_detection)
 -   [unbiased teacher](https://github.com/facebookresearch/unbiased-teacher)
 -   [detectron2](https://github.com/facebookresearch/detectron2)
