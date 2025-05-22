@@ -161,11 +161,6 @@ python tools/train_net_sets.py \
 
 
 
-
-## License
-
-Active Teacher is released under the [Apache 2.0 license](LICENSE).
-
 ## Acknowledgement
 -   [Active teacher](https://github.com/HunterJ-Lin/ActiveTeacher/tree/main)
 -   [STAC](https://github.com/google-research/ssl_detection)
