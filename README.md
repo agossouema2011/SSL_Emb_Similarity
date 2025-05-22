@@ -159,7 +159,20 @@ python tools/train_net_sets.py \
 | Active Teacher       | 34.79\% | 35.21\% | GT         | 63.63                              | 94.02 | 70.95          | 35.33          | 58.84          | 69.62          |
 | DTA + AS (Ours)                         | 34.79\% | 35.21\% | GT         | 64.17                    | 93.25          | 74.32 | 43.45 | 58.89 | 70.73 |
 
+## Citing DTA+AS
 
+If you find our work useful in your research, please consider citing:
+
+```
+@inproceedings{agossou2025dta,
+  title={Improving pseudo-labels selection using domain priors for semi-supervised detection in capsule endoscopy},
+  author={Agossou, Bidossessi Emmanuel and Pedersen, Marius and Raja, Kiran and Vats Anuja},
+  booktitle={IEEE International Conference on Image Processing [under review]},
+  year={2025},
+  pages={},
+  publisher={IEEE}
+}
+```
 
 ## Acknowledgement
 -   [Active teacher](https://github.com/HunterJ-Lin/ActiveTeacher/tree/main)
