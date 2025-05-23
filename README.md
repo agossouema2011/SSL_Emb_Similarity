@@ -38,7 +38,7 @@ Our Domain-Tailored Augmentations **DTA**.
 ## Dataset Preparation
 
 ### Custom dataset
-Download our folder containing the two datasets (Kvasir Capsule and SEE-AI) we used here :
+Download our folder containing the two datasets (Kvasir Capsule and SEE-AI) we used here :[Kvasir Capsule](https://www.kaggle.com/datasets/emmanuelagosou/our-samples-from-kvasir-capsule-dataset) and [SEE-AI](https://www.kaggle.com/datasets/emmanuelagosou/our-samples-from-see-ai-datastet)
 After downloading extract 
 Then, copy the concerned dataset content in the folder "datasets". For testing we provide 9 subsets. The .json files contains the annotations.
 The expected files structure is :
