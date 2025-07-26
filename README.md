@@ -8,6 +8,9 @@ detection in Capsule Endoscopy"](https://xxxx.pdf).
 The overall of our **Bloc Diagram**. 
 <p align="center">
 <img src="newBlocDiagram.png">
+  Fig. 1: Block diagram of our proposed method. DTA provides of image transformations that commonly occur in WCE. Each unlabeled image is augmented by DTA, which generates multiples augmented versions. The pretrained teacher generates predictions for the augmented versions. The bounding boxes are then fused using Weighted Boxes Fusion (WBF) to refine initial predictions. DTA and WBF enable our method to take into account uncertainty in the final predictions before actively sampling the most informative unlabeled images using the work by Mi et al.[Active teacher].
+<img width="4648" height="45" alt="image" src="https://github.com/user-attachments/assets/84354c7d-4f51-4eb4-878a-b7b41b222b4e" />
+
 </p>
 
 ## Important notes
@@ -131,6 +134,7 @@ If you find our work useful in your research, please consider citing:
 
 ## Acknowledgement
 -   [Active teacher](https://github.com/HunterJ-Lin/ActiveTeacher/tree/main)
+-   [Weighed Boxes Fusion](https://github.com/christiansafka/img2vec)
 -   [STAC](https://github.com/google-research/ssl_detection)
 -   [unbiased teacher](https://github.com/facebookresearch/unbiased-teacher)
 -   [detectron2](https://github.com/facebookresearch/detectron2)
