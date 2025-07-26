@@ -1,5 +1,4 @@
-# Improving pseudo-labels using the embeddings for semi-supervised pathology
-detection in Capsule Endoscopy
+# Improving pseudo-labels using the embeddings for semi-supervised pathology detection in Capsule Endoscopy
 This is an official implementation for ACM2025 paper ["Improving pseudo-labels using the embeddings for semi-supervised pathology
 detection in Capsule Endoscopy"](https://xxxx.pdf). 
 
