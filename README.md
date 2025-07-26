@@ -1,8 +1,8 @@
-# IMPROVING PSEUDO-LABELS SELECTION USING DOMAIN PRIORS FOR SEMI-SUPERVISED DETECTION IN CAPSULE ENDOSCOPY
-This is an official implementation for ICIP2025 paper ["IMPROVING PSEUDO-LABELS SELECTION USING DOMAIN PRIORS FOR SEMI-SUPERVISED DETECTION IN CAPSULE ENDOSCOPY"](https://xxxx.pdf). 
+# Improving pseudo-labels using the embeddings for semi-supervised pathology
+detection in Capsule Endoscopy
+This is an official implementation for ACM2025 paper ["Improving pseudo-labels using the embeddings for semi-supervised pathology
+detection in Capsule Endoscopy"](https://xxxx.pdf). 
 
-<!-- by [Peng Mi](), [Jianghang Lin](https://github.com/HunterJ-Lin), [Yiyi Zhou](), [Yunhang Shen](), [Gen Luo](), [Xiaoshuai Sun](), [Liujuan Cao](), [Rongrong Fu](), [Qiang Xu](), [Rongrong Ji](). -->
-<!-- Conference on Computer Vision and Pattern Recognition (CVPR) 2022 Paper.</br> -->
 
 ## Introduction
 
@@ -14,11 +14,6 @@ The overall of our **Bloc Diagram**.
 Our Domain-Tailored Augmentations **DTA**. 
 <p align="center">
 <img src="DTA.png">
-</p>
-
-**Better pseudo-labels than Active Teacher**. 
-<p align="center">
-<img src="compareWithAT.png">
 </p>
 
 ## Important notes
@@ -87,48 +82,14 @@ python tools/train_net.py \
 
 ```
 
-### Step 2、Use the trained model from step 1 to get the indicator file of the dataset
-```
-python tools/inference_for_active_pick_TTA_AS.py\
-    --static_file temp/coco/static_by_random.json \
-    --model_weights output/coco/result_initial_faster_rcnn_R_50_FPN_sup35_run1_16bs/model_best.pth \
-    --config configs/coco/faster_rcnn_R_50_FPN_sup35_run1.yaml \
-    
-
-python tools/TTA_AS_active_pick_evaluation.py \
-    --static_file temp/coco/static_by_random.json/static_by_random.json \
-    --indicator_file results/coco/random_maxnorm
-    
-```
-
-### Step 3、Use the indictor file from step 2 to generate pick data and merge random data
-```
-python tools/TTA_AS_generate_pick_merge_random_data_partition.py \
-    --random_file dataseed/COCO_supervision.txt \
-    --random_percent 34.79\
-    --indicator_file results/coco/random_maxnorm.txt \
-    --pick_percent 35.21\
-    --save_file dataseed/coco_pick/pick_maxnorm+random.txt\
-    --static_file temp/coco/static_by_random.json/static_by_random.json \
-    --reverse True \
-```
-
-### Step 4、Train a model from scratch using the 10% data partition from step 3
-```
-python tools/TTA_SA_GT_train_net.py \
-      --num-gpus 1 \
-      --config configs/coco/faster_rcnn_R_50_FPN_sup70_run1.yaml \
-       SOLVER.IMG_PER_BATCH_LABEL 16 SOLVER.IMG_PER_BATCH_UNLABEL 16 OUTPUT_DIR output/coco/result_final_faster_rcnn_R_50_FPN_sup70_run1_16bs DATALOADER.RANDOM_DATA_SEED_PATH dataseed/coco_pick/pick_maxnorm+random.txt   
-  
-```
 
 ## Evaluation
 ```
 python tools/train_net.py \
       --eval-only \
       --num-gpus 1 \
-      --config configs/coco/faster_rcnn_R_50_FPN_sup70_run1.yaml \
-       SOLVER.IMG_PER_BATCH_LABEL 16 SOLVER.IMG_PER_BATCH_UNLABEL 16  MODEL.WEIGHTS output/coco/result_final_faster_rcnn_R_50_FPN_sup70_run1_16bs/model_best.pth OUTPUT_DIR output/results
+      --config configs/coco/faster_rcnn_R_50_FPN_sup35_run1.yaml \
+       SOLVER.IMG_PER_BATCH_LABEL 16 SOLVER.IMG_PER_BATCH_UNLABEL 16  MODEL.WEIGHTS output/coco/result_final_faster_rcnn_R_50_FPN_sup35_run1_16bs/model_best.pth OUTPUT_DIR output/results
 
 ```
 ## Evaluation for each set :
@@ -137,8 +98,8 @@ Note: You should update the "register_coco_instances()" function with the corres
 python tools/train_net_sets.py \
       --eval-only \
       --num-gpus 1 \
-      --config configs/coco/faster_rcnn_R_50_FPN_sup70_run1.yaml \
-       SOLVER.IMG_PER_BATCH_LABEL 16 SOLVER.IMG_PER_BATCH_UNLABEL 16  MODEL.WEIGHTS output/coco/result_final_faster_rcnn_R_50_FPN_sup70_run1_16bs/model_best.pth  OUTPUT_DIR output/set_name
+      --config configs/coco/faster_rcnn_R_50_FPN_sup35_run1.yaml \
+       SOLVER.IMG_PER_BATCH_LABEL 16 SOLVER.IMG_PER_BATCH_UNLABEL 16  MODEL.WEIGHTS output/coco/result_final_faster_rcnn_R_50_FPN_sup35_run1_16bs/model_best.pth  OUTPUT_DIR output/set_name
 
 ```
 
