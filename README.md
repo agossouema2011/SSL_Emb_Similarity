@@ -7,7 +7,7 @@ detection in Capsule Endoscopy"](https://xxxx.pdf).
 
 The overall of our **Bloc Diagram**. 
 <p align="center">
-<img src="blocDiagram.png">
+<img src="newBlocDiagram.png">
 </p>
 
 ## Important notes
