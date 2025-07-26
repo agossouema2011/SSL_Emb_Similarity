@@ -8,12 +8,7 @@ detection in Capsule Endoscopy"](https://xxxx.pdf).
 
 The overall of our **Bloc Diagram**. 
 <p align="center">
-<img src="blockDiagram.png">
-</p>
-
-Our Domain-Tailored Augmentations **DTA**. 
-<p align="center">
-<img src="DTA.png">
+<img src="blocDiagram.png">
 </p>
 
 ## Important notes
