@@ -102,7 +102,8 @@ python tools/train_net_sets.py \
 ## Results
 - The results on **different datasets** is shown as below:
 <img width="80%" height="80%" alt="image" src="resultsTables/table1_acm_github.png" />
-<img width="80%" height="80%" alt="image" src="resultsTables/table2_acm_github.png" />
+<img width="80%" height="80%" alt="image" src="resultsTables/table2_a_acm_github.png" />
+<img width="80%" height="80%" alt="image" src="resultsTables/table2_b_acm_github.png" />
 <img width="80%" height="80%" alt="image" src="resultsTables/table3_4_acm_github.png" />
 <img width="80%" height="80%" alt="image" src="fig3_4_acm_github.png" />
 <img width="80%" height="80%" alt="image" src="fig6_7_acm_github.png" />
