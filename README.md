@@ -101,20 +101,20 @@ python tools/train_net_sets.py \
 <img width="100%" height="100%" alt="image" src="resultsTables/table1_acm_github.png" />
 <img width="100%" height="100%" alt="image" src="resultsTables/table2_acm_github.png" />
 <img width="100%" height="100%" alt="image" src="resultsTables/table3_4_acm_github.png" />
-<img width="100%" height="100%" alt="image" src="resultsTables/fig3_4_acm_github.png" />
-<img width="100%" height="100%" alt="image" src="resultsTables/fig6_7_acm_github.png" />
+<img width="100%" height="100%" alt="image" src="fig3_4_acm_github.png" />
+<img width="100%" height="100%" alt="image" src="fig6_7_acm_github.png" />
 ## Citing 
 
 If you find our work useful in your research, please consider citing:
 
 ```
 @inproceedings{agossou2025dta,
-  title={Improving pseudo-labels selection using domain priors for semi-supervised detection in capsule endoscopy},
+  title={Improving pseudo-labels using the embeddings for semi-supervised pathology detection in Capsule Endoscopy},
   author={Agossou, Bidossessi Emmanuel and Pedersen, Marius and Raja, Kiran and Vats Anuja},
-  booktitle={IEEE International Conference on Image Processing [under review]},
+  booktitle={ACM Transactions on Multimedia Computing, Communications, and Applications [under review]},
   year={2025},
   pages={},
-  publisher={IEEE}
+  publisher={ACM}
 }
 ```
 
