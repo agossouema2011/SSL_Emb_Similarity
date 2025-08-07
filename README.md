@@ -21,6 +21,9 @@ The overall of our **Bloc Diagram**.
 - Update "NUM_CLASSES: 8" in 'configs/coco/Base-RCNN-FPN.yaml' to fit the number of class of your dataset.
 - You can also update other parameters in the configuration file 'configs/coco/Base-RCNN-FPN.yaml' or 'configs/Base-RCNN-FPN.yaml'
 - Update "metadata" variable in 'tools/train_net.py' and 'tools/train_net_sets.py' according to the classes names of your dataset
+- In "tools/activeteacher/engine" you will find "trainer.py" which is currently using the cosine similarity loss. You can change the value set for "alpha=1" to any other value at your convenience.
+- If you want to train the model using the "VICREG Loss" or "InfoNCE Loss", you should just replace all the content in "tools/activeteacher/engine/trainer.py" by the content in "trainer_VICREG (1).py" or "trainer_InfoNCELoss.py" respectively.
+  
   
 ## Dataset Preparation
 
