@@ -98,10 +98,10 @@ python tools/train_net_sets.py \
 
 ## Results
 - The results on **different datasets** is shown as below:
-<img width="4648" height="45" alt="image" src="" />
-<img width="4648" height="45" alt="image" src="" />
-<img width="4648" height="45" alt="image" src="" />
-<img width="4648" height="45" alt="image" src="" />
+<img width="" height="" alt="image" src="resultsTables/table1_acm_github.png" />
+<img width="" height="" alt="image" src="resultsTables/table2_acm_github.png" />
+<img width="" height="" alt="image" src="resultsTables/table3_4_acm_github.png" />
+<img width="4648" height="" alt="image" src="" />
 
 ## Citing 
 
