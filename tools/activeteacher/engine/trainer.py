@@ -7,6 +7,8 @@ from torch.nn.parallel import DistributedDataParallel
 from fvcore.nn.precise_bn import get_bn_modules
 import numpy as np
 import cv2
+
+
 from collections import OrderedDict
 
 import detectron2.utils.comm as comm
@@ -33,7 +35,302 @@ from activeteacher.modeling.meta_arch.ts_ensemble import EnsembleTSModel
 from activeteacher.checkpoint.detection_checkpoint import DetectionTSCheckpointer
 from activeteacher.solver.build import build_lr_scheduler
 
+from torchvision import transforms
+from PIL import Image, ImageDraw
 
+from img2vec_pytorch import Img2Vec
+
+import torch.nn as nn
+from sklearn.metrics.pairwise import cosine_similarity
+from torchvision import transforms
+ 
+from PIL import Image
+import torchvision.transforms.functional as con
+from PIL import Image, ImageEnhance
+from PIL import Image, ImageFilter
+
+import logging
+
+# Configure the logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Create a logger
+logger = logging.getLogger(__name__)
+
+#-------------------------------------------------- Added functions --------------------------------------------------------
+
+import torch
+import numpy as np
+import json
+
+
+# Function to get the largest bboxe which is the box having minimum and maximum x, y coordinates
+def get_largest_bounding_box(bboxes):
+    x_min = min(bbox[0] for bbox in bboxes)  # Minimum x (left)
+    y_min = min(bbox[1] for bbox in bboxes)  # Minimum y (top)
+    x_max = max(bbox[2] for bbox in bboxes)  # Maximum x (right)
+    y_max = max(bbox[3] for bbox in bboxes)  # Maximum y (bottom)
+    return x_min, y_min, x_max, y_max
+
+    
+def crop_image(image, bbox):  # get read image with PIL.open() and the bbox cordinates and return the cropped image 
+    # Crop the image using the bounding box coordinates
+    cropped_image = image.crop(bbox)
+    # Ensure the crop is at least 224x224
+    min_size = (224, 224)
+    cropped_image = cropped_image.resize(min_size, Image.Resampling.LANCZOS)
+    return cropped_image
+
+# This function creates empty image of 224x224
+def empty_image():
+    # Define the size and color (white) of the empty image
+    width, height = 224, 224
+    color = (255, 255, 255)  # RGB for white
+    # Create an empty (white) image
+    empty_image = Image.new("RGB", (width, height), color)
+"""
+def yolobbox2bbox(x,y,w,h):
+    x1, y1 = x-w/2, y-h/2
+    x2, y2 = x+w/2, y+h/2
+    return x1, y1, x2, y2
+"""
+
+# Function to convert (x, y, width, height) to (x1, y1, x2, y2)
+def convert_bbox(x, y, width, height):
+    x1 = x
+    y1 = y
+    x2 = x + width
+    y2 = y + height
+    return x1, y1, x2, y2
+    
+class Boxes_ext:
+    def __init__(self, tensor):
+        self.tensor = tensor
+
+class Instances_ext:
+    def __init__(self, num_instances, image_height, image_width, fields):
+        self.num_instances = num_instances
+        self.image_height = image_height
+        self.image_width = image_width
+        self.fields = fields
+
+# Function to extract 'Boxes' array values from each instance
+def extract_boxes(instance):
+    #boxes_list = []
+    #print("---------------------------- instance*******=",instance,"----------TYPE=",type(instance),"------------\n")
+    gt_boxes = instance.gt_boxes.tensor.cpu().numpy()  # Convert tensor to numpy array and move to CPU
+    #boxes_list.append(gt_boxes)
+    return gt_boxes
+    
+# Function to convert arrays to tuples
+def convert_boxes_to_tuples(boxes_list):
+    return [tuple(box.flatten()) for box in boxes_list if box.size > 0]
+    
+    
+# Function to draw a bounding box on the image
+def draw_bounding_box(pil_image, bbox):
+    # Create an ImageDraw object
+    draw = ImageDraw.Draw(pil_image)
+    # Draw the bounding box
+    draw.rectangle(bbox, outline="red", width=3)
+    return pil_image
+    
+# Function to read the image and convert it to a tensor
+def read_image(image_path):
+    image = Image.open(image_path)
+    #resized_image=image.resize((224,224))
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        #transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
+    image_tensor = transform(image)
+    return image_tensor
+
+# Function to get image IDs, image names, and bounding boxes for each category
+def get_image_info_per_category(coco_data):
+    category_dict = {}
+    # Initialize the category dictionary
+    for category in coco_data['categories']:
+        category_dict[category['id']] = {
+            'name': category['name'],
+            'images': []
+        }
+
+    # Create a dictionary for image names by their IDs
+    image_id_to_name = {image['id']: image['file_name'] for image in coco_data['images']}
+
+    # Iterate through annotations and populate the dictionary
+    for annotation in coco_data['annotations']:
+        category_id = annotation['category_id']
+        image_id = annotation['image_id']
+        bbox = annotation['bbox']
+        image_name = image_id_to_name.get(image_id)
+
+        category_dict[category_id]['images'].append({
+            'image_id': image_id,
+            'image_name': image_name,
+            'bbox': bbox
+        })
+
+    return category_dict
+
+    
+# Function to get labeled images of given classes with their annontations
+def get_same_class_labelled_images(predClasses):
+    # Example usage
+    with open('./././datasets/coco/annotations/coco_training.json', 'r') as f:
+        coco_data = json.load(f)
+    
+    category_dict = get_image_info_per_category(coco_data)
+    
+    # Print the result
+    selected_images_ids=[]
+    selected_images=[]
+    selected_images_bbox=[]
+    
+    del category_dict[0]
+
+    for category_id, data in category_dict.items():
+        #print(f"Category: {data['name']} (ID: {category_id})")
+        image_info=data['images'][0]
+        #print("-----------------image_info=",image_info)
+        selected_images_ids.append(image_info)
+        selected_images.append(image_info['image_name'])
+        selected_images_bbox.append(image_info['bbox'])
+    #print("----------------------- selected_images=",selected_images,"\n")
+    #print("------------------------ selected_images_bbox=",selected_images_bbox,"\n")
+    #print("------------------------ predClasses 111 =",predClasses,"\n")
+    
+    labeled_image=[]
+    labeled_bbox=[]
+    for i in range(len(predClasses)):
+        indice_class=predClasses[i]
+        #
+        # Check in the initial labeled txt file and return file_path, the_labeled_bbox
+        #file_link="./././datasets/coco/train/"+selected_images[indice_class]
+        
+        if 0 <= indice_class < len(selected_images):
+            file_link = "./././datasets/coco/train/" + selected_images[indice_class]
+            the_labeled_image=Image.open(file_link)
+            labeled_image.append(the_labeled_image)
+            labeled_bbox.append(selected_images_bbox[indice_class])
+        else:
+            print("Index out of range. Check your indice_class value.")
+
+        #print("------------------------  file_link selected_image=",file_link,"\n")
+        #the_labeled_image=Image.open(file_link)
+        #labeled_image.append(the_labeled_image)
+        #labeled_bbox.append(selected_images_bbox[indice_class])
+        
+    #print("------------------------ Len labeled_image =",len(labeled_image),"\n")
+    #print("------------------------ Len labeled_bbox =",len(labeled_bbox),"\n")
+    return labeled_image,labeled_bbox
+    
+
+# Function to combine two images side by side. The two images are already read with PIL function Image.open()
+def combine_images(image1, image2):
+    # Get dimensions
+    width1, height1 = image1.size
+    width2, height2 = image2.size
+    # Create a new image with combined width and max height
+    combined_image = Image.new("RGB", (width1 + width2, max(height1, height2)))
+    # Paste the two images into the combined image
+    combined_image.paste(image1, (0, 0))
+    combined_image.paste(image2, (width1, 0))
+    return combined_image
+    
+
+# Function to perform a horizontal flip
+def horizontal_flip(image_tensor):
+    transform = transforms.RandomHorizontalFlip(p=1)  # p=1.0 ensures the image is always flipped
+    H_flipped_image_tensor = transform(image_tensor)
+    return H_flipped_image_tensor
+    
+def vertical_flip(image_tensor):
+    transform = transforms.RandomVerticalFlip(p=1)  # p=1.0 ensures the image is always flipped
+    V_flipped_image_tensor = transform(image_tensor)
+    return V_flipped_image_tensor
+
+def gaussian_blur(input_img,kernel_size,thesigma):
+    from torchvision.transforms import v2
+    # Image Gaussian blur
+    blurrer = v2.GaussianBlur(kernel_size=kernel_size, sigma=thesigma)
+    "kernel_size (int or sequence) – Size of the Gaussian kernel. " \
+    "sigma (float or tuple of python:float (min, max)) – " \
+    "Standard deviation to be used for creating kernel to perform blurring. " \
+    "If float, sigma is fixed. If it is tuple of float (min, max), " \
+    "sigma is chosen uniformly at random to lie in the given range." \
+    "The size of the Gaussian kernel depends on the noise level in the image. If the kernel size is too large, small features within the image may get suppressed, and the image may look blurred." \
+    " Hence, the quality of the details of the image will be affected."
+    output_img = blurrer(input_img)
+    return output_img 
+    
+    
+def constrast_enhancement(input_img, contast_level):
+    # adjust the contrast of the image
+    output_img = con.adjust_contrast(input_img, contast_level)
+    return output_img
+    
+    
+def brightness_enhancement(input_img, brightness_level):
+    # adjust the contrast of the image
+    output_img = con.adjust_brightness (input_img, brightness_level)
+    return output_img
+
+
+def constrast_enh(image,level):
+    # Enhance the contrast of the image
+    enhancer = ImageEnhance.Contrast(image)
+    contrast_enhanced_image = enhancer.enhance(level)  # Adjust the factor (e.g., 1.5) for desired enhancement
+    # Transpose the image (e.g., flip left-to-right)
+    #transposed_image = contrast_enhanced_image.transpose(Image.FLIP_LEFT_RIGHT)
+    return contrast_enhanced_image
+    
+def brightness_enh(image, level):
+    # Enhance the brightness of the image
+    enhancer = ImageEnhance.Brightness(image)
+    brightness_enhanced_image = enhancer.enhance(level)  # Adjust the factor (e.g., 1.5) for desired enhancement
+    # Transpose the image (e.g., flip top-to-bottom)
+    #transposed_image = brightness_enhanced_image.transpose(Image.FLIP_TOP_BOTTOM)
+    return brightness_enhanced_image
+
+
+# Create a Gaussian kernel with different sigma values for x and y
+def gaussian_kernel(size, sigma_x, sigma_y):
+    kernel = np.fromfunction(
+        lambda x, y: (1/(2*np.pi*sigma_x*sigma_y)) * np.exp(-((x-(size-1)/2)**2 / (2*sigma_x**2) + (y-(size-1)/2)**2 / (2*sigma_y**2))),
+        (size, size)
+    )
+    return kernel / np.sum(kernel)
+
+from PIL import Image, ImageFilter
+import numpy as np
+
+def gaussian_Blurr(image,kernel_size,sigma_x,sigma_y):
+    # Apply Gaussian Blur with custom kernel
+    kernel = gaussian_kernel(kernel_size, sigma_x, sigma_y)
+    gaussian_filter = ImageFilter.Kernel((kernel_size, kernel_size), kernel.flatten(), scale=np.sum(kernel))
+    blurred_image = image.filter(gaussian_filter)
+    return blurred_image
+
+
+    
+    
+# Function to convert tensor values to integers
+def convert_to_int(tensor):
+    int_tensor = tensor.mul(255).byte()
+    return int_tensor
+    
+# function to generate the tensor from a PIL image
+def tensor_values(image):
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
+    theimage_tensor = transform(image)
+    return theimage_tensor
+#--------------------------------------------- End added Function block -----------------------------------------
+    
 class ActiveTeacherTrainer(DefaultTrainer):
     def __init__(self, cfg):
         """
@@ -165,6 +462,7 @@ class ActiveTeacherTrainer(DefaultTrainer):
                 self.before_train()
 
                 for self.iter in range(start_iter, max_iter):
+                    #print("-------------------- ITTERATION Nb=",self.iter,"-----------\n")
                     self.before_step()
                     self.run_step_full_semisup()
                     self.after_step()
@@ -270,6 +568,7 @@ class ActiveTeacherTrainer(DefaultTrainer):
             unlabel_datum["instances"] = lab_inst
         return unlabled_data
 
+  
     # =====================================================
     # =================== Training Flow ===================
     # =====================================================
@@ -278,7 +577,11 @@ class ActiveTeacherTrainer(DefaultTrainer):
         self._trainer.iter = self.iter
         assert self.model.training, "[ActiveTeacherTrainer] model was changed to eval mode!"
         start = time.perf_counter()
+        
+        #data_loader = self._trainer._data_loader_iter
+      
         data = next(self._trainer._data_loader_iter)
+        
         # data_q and data_k from different augmentations (q:strong, k:weak)
         # label_strong, label_weak, unlabed_strong, unlabled_weak
         label_data_q, label_data_k, unlabel_data_q, unlabel_data_k = data
@@ -287,7 +590,140 @@ class ActiveTeacherTrainer(DefaultTrainer):
         # remove unlabeled data labels
         unlabel_data_q = self.remove_label(unlabel_data_q)
         unlabel_data_k = self.remove_label(unlabel_data_k)
+        
+        
+        #---------------- ------------- New Bloc strats from here ----------------------------------------------------
+        original_images=[] # array of unlabeled images
+        image_ids=[]  # array of unlabeled images image_ids
+        #print("-------------------- original unlabel_data_k len=",len(unlabel_data_k)," ------------------------\n")
+        for ii in range(len(unlabel_data_k)):
+            original_images.append(unlabel_data_k[ii]['file_name']) # Get the original unlabel image name 
+            image_ids.append(unlabel_data_k[ii]['image_id']) # Get the original unlabel image id
+        
+        images=[] #  Array for the Original unlabeled labeled images
+        H_flipped_images=[] # TArray for the horizontal fliped unlabeled labeled images
+        V_flipped_images=[] # Arrays for the vertical fliped unlabeled labeled images
+        C1_images=[] # Arrays for the Contrast enhanced 1
+        C2_images=[] # Arrays for the Contrast enhanced 2
+        C3_images=[] # Arrays for the Contrast enhanced 3
+        B1_images=[] # Arrays for the Brigthness enhanced 1
+        B2_images=[] # Arrays for the Brigthness enhanced 2
+        GB1_images=[] # Arrays for the Gaussian Blured 1
+        
+        thewidth=0  # image width
+        theheight=0     # image height
+        
+        for ii in range(len(original_images)):
+            link_elt="./././"+original_images[ii]
+            #print("-------------------- original unlabel images Link=",link_elt," ------------------------\n")
+            theimage=Image.open(link_elt)
+            thewidth,theheight = theimage.size 
+            images.append(theimage)
+            H_flip_img = theimage.transpose(Image.FLIP_LEFT_RIGHT) # horizontal fliping
+            V_flip_img = theimage.transpose(Image.FLIP_TOP_BOTTOM) # vertical fliping
+            H_flipped_images.append(H_flip_img)
+            V_flipped_images.append(V_flip_img)
+            
+            enhancer = ImageEnhance.Contrast(theimage)
+            C1_images.append(enhancer.enhance(0.7))
+            enhancer = ImageEnhance.Contrast(theimage)
+            C2_images.append(enhancer.enhance(1.3))
+            enhancer = ImageEnhance.Contrast(theimage)
+            C3_images.append(enhancer.enhance(1.5))
 
+            enhancer1 = ImageEnhance.Brightness(theimage)
+            B1_images.append(enhancer1.enhance(0.8))
+            enhancer1 = ImageEnhance.Brightness(theimage)
+            B2_images.append(enhancer1.enhance(1.2))
+            GB1_images.append(gaussian_Blurr(theimage,5,0.1,5))
+        
+        image_tensors=[] # Tensor vectors for the Original unlabeled labeled images
+        H_flipped_image_tensors=[] # Tensor vectors for the horizontal fliped unlabeled labeled images
+        V_flipped_image_tensors=[] # Tensor vectors for the vertical fliped unlabeled labeled images
+        C_enhancement1_image_tensors=[] # Tensor vectors for the contrast enhancement unlabeled labeled images
+        C_enhancement2_image_tensors=[] # Tensor vectors for the contrast enhancement unlabeled labeled images
+        C_enhancement3_image_tensors=[] # Tensor vectors for the contrast enhancement unlabeled labeled images
+        B_enhancement1_image_tensors=[] # Tensor vectors for the Brightness enhancement unlabeled labeled images
+        B_enhancement2_image_tensors=[] # Tensor vectors for the Brightness enhancement unlabeled labeled images
+        GaussianBlur1_image_tensors=[] # Tensor vectors for the Gaussian Blur unlabeled labeled images
+        
+        
+        for ii in range(len(original_images)):
+            link_elt="./././"+original_images[ii]
+            #print("-------------------- original unlabel images Link=",link_elt," ------------------------\n")
+            image_tensor=convert_to_int(read_image(link_elt))
+            image_tensors.append(image_tensor)
+            H_flipped_image_tensors.append(horizontal_flip(image_tensor))
+            V_flipped_image_tensors.append(vertical_flip(image_tensor))
+            C_enhancement1_image_tensors.append(constrast_enhancement(image_tensor,0.7))
+            C_enhancement2_image_tensors.append(constrast_enhancement(image_tensor,1.3))
+            C_enhancement3_image_tensors.append(constrast_enhancement(image_tensor,1.5))
+            B_enhancement1_image_tensors.append(brightness_enhancement(image_tensor,0.8))
+            B_enhancement2_image_tensors.append(brightness_enhancement(image_tensor,2))
+            GaussianBlur1_image_tensors.append(gaussian_blur(image_tensor,(5,5),(0.1,5)))
+            
+        #weak unlabel_data_k = [{'file_name': 'datasets/coco/train/image08649.jpg', 'height': 576, 'width': 576, 'image_id': 4590, 'image': tensor([[[ 0,  0,  0,  ..., 16, 16, 16]]])}]
+        
+        # put the original images and the flipped images into the same data type and format as unlabel_data_k for the teacher model to process them
+        
+        copy_unlabel_data_k=[]
+        H_flipped_unlabel_data_k=[]
+        V_flipped_unlabel_data_k=[]
+        C_enhancement1_unlabel_data_k=[]
+        C_enhancement2_unlabel_data_k=[]
+        C_enhancement3_unlabel_data_k=[]
+        B_enhancement1_unlabel_data_k=[]
+        B_enhancement2_unlabel_data_k=[]
+        GaussianBlur1_unlabel_data_k=[]
+        
+        
+        for ii in range(len(image_tensors)):
+            theimage=original_images[ii]
+            theimage_id=image_ids[ii]
+            H_flip_image_id=theimage_id*100000
+            V_flip_image_id=theimage_id*1000000
+            C1_image_id=theimage_id*10000000
+            C2_image_id=theimage_id*100000000
+            C3_image_id=theimage_id*1000000000
+            B1_image_id=theimage_id*10000000000
+            B2_image_id=theimage_id*100000000000
+            GB1_image_id=theimage_id*1000000000000
+            
+            elt_img={}
+            elt_H_flip_img={}
+            elt_V_flip_img={}
+            elt_C1_img={}
+            elt_C2_img={}
+            elt_C3_img={}
+            elt_B1_img={}
+            elt_B2_img={}
+            elt_GB1_img={}
+            
+            elt_img = {'file_name': theimage, 'height': theheight, 'width': thewidth, 'image_id':theimage_id , 'image': image_tensors[ii]}
+            elt_H_flip_img = {'file_name': theimage, 'height': theheight, 'width': thewidth, 'image_id':H_flip_image_id , 'image': H_flipped_image_tensors[ii]}
+            elt_V_flip_img = {'file_name': theimage, 'height': theheight, 'width': thewidth, 'image_id': V_flip_image_id , 'image': V_flipped_image_tensors[ii]}
+            elt_C1_img = {'file_name': theimage, 'height': theheight, 'width': thewidth, 'image_id': C1_image_id , 'image': C_enhancement1_image_tensors[ii]}
+            elt_C2_img = {'file_name': theimage, 'height': theheight, 'width': thewidth, 'image_id': C2_image_id , 'image': C_enhancement2_image_tensors[ii]}
+            elt_C3_img = {'file_name': theimage, 'height': theheight, 'width': thewidth, 'image_id': C3_image_id , 'image': C_enhancement3_image_tensors[ii]}
+            elt_B1_img = {'file_name': theimage, 'height': theheight, 'width': thewidth, 'image_id': B1_image_id , 'image': B_enhancement1_image_tensors[ii]}
+            elt_B2_img = {'file_name': theimage, 'height': theheight, 'width': thewidth, 'image_id': B2_image_id , 'image': B_enhancement2_image_tensors[ii]}
+            elt_GB1_img = {'file_name': theimage, 'height': theheight, 'width': thewidth, 'image_id': GB1_image_id , 'image': GaussianBlur1_image_tensors[ii]}
+            
+            copy_unlabel_data_k.append(elt_img)
+            H_flipped_unlabel_data_k.append(elt_H_flip_img)
+            V_flipped_unlabel_data_k.append(elt_V_flip_img)
+            C_enhancement1_unlabel_data_k.append(elt_C1_img)
+            C_enhancement2_unlabel_data_k.append(elt_C2_img)
+            C_enhancement3_unlabel_data_k.append(elt_C3_img)
+            B_enhancement1_unlabel_data_k.append(elt_B1_img)
+            B_enhancement2_unlabel_data_k.append(elt_B2_img)
+            GaussianBlur1_unlabel_data_k.append(elt_GB1_img)
+            
+        #-------------------------------------New Bloc ends here -----------------------------------------------
+        
+       
+            
+        
         # burn-in stage (supervised training with labeled data)
         if self.iter < self.cfg.SEMISUPNET.BURN_UP_STEP:
 
@@ -313,7 +749,7 @@ class ActiveTeacherTrainer(DefaultTrainer):
             ) % self.cfg.SEMISUPNET.TEACHER_UPDATE_ITER == 0:
                 self._update_teacher_model(
                     keep_rate=self.cfg.SEMISUPNET.EMA_KEEP_RATE)
-
+            
             record_dict = {}
             #  generate the pseudo-label using teacher model
             # note that we do not convert to eval mode, as 1) there is no gradient computed in
@@ -343,11 +779,927 @@ class ActiveTeacherTrainer(DefaultTrainer):
                 proposals_roih_unsup_k, cur_threshold, "roih", "thresholding"
             )
             joint_proposal_dict["proposals_pseudo_roih"] = pesudo_proposals_roih_unsup_k
+            
+            
+            
+            
+            
+            
+            #--------------------------------------------- Pseudo labeling for the copy of original images --------------------
+            with torch.no_grad():
+                (
+                    _,
+                    copy_proposals_rpn_unsup_k,
+                    copy_proposals_roih_unsup_k,
+                    _,
+                ) = self.model_teacher(copy_unlabel_data_k, branch="unsup_data_weak")
 
+            #  Pseudo-labeling
+            cur_threshold = self.cfg.SEMISUPNET.BBOX_THRESHOLD
+
+            copy_joint_proposal_dict = {}
+            copy_joint_proposal_dict["proposals_rpn"] = copy_proposals_rpn_unsup_k
+            (
+                copy_pesudo_proposals_rpn_unsup_k,
+                copy_nun_pseudo_bbox_rpn,
+            ) = self.process_pseudo_label(
+                copy_proposals_rpn_unsup_k, cur_threshold, "rpn", "thresholding"
+            )
+            copy_joint_proposal_dict["proposals_pseudo_rpn"] = copy_pesudo_proposals_rpn_unsup_k
+            # Pseudo_labeling for ROI head (bbox location/objectness)
+            copy_pesudo_proposals_roih_unsup_k, _ = self.process_pseudo_label(
+                copy_proposals_roih_unsup_k, cur_threshold, "roih", "thresholding"
+            )
+            copy_joint_proposal_dict["proposals_pseudo_roih"] = copy_pesudo_proposals_roih_unsup_k
+            
+            
+            
+            
+            #--------------------------------------------- Pseudo labeling for the Horizontal Fliped for the copy of original images --------------------
+            with torch.no_grad():
+                (
+                    _,
+                    H_flipped_proposals_rpn_unsup_k,
+                    H_flipped_proposals_roih_unsup_k,
+                    _,
+                ) = self.model_teacher(H_flipped_unlabel_data_k, branch="unsup_data_weak")
+
+            #  Pseudo-labeling
+            cur_threshold = self.cfg.SEMISUPNET.BBOX_THRESHOLD
+
+            H_flipped_joint_proposal_dict = {}
+            H_flipped_joint_proposal_dict["proposals_rpn"] = H_flipped_proposals_rpn_unsup_k
+            (
+                H_flipped_pesudo_proposals_rpn_unsup_k,
+                H_flipped_nun_pseudo_bbox_rpn,
+            ) = self.process_pseudo_label(
+                H_flipped_proposals_rpn_unsup_k, cur_threshold, "rpn", "thresholding"
+            )
+            H_flipped_joint_proposal_dict["proposals_pseudo_rpn"] = H_flipped_pesudo_proposals_rpn_unsup_k
+            # Pseudo_labeling for ROI head (bbox location/objectness)
+            H_flipped_pesudo_proposals_roih_unsup_k, _ = self.process_pseudo_label(
+                H_flipped_proposals_roih_unsup_k, cur_threshold, "roih", "thresholding"
+            )
+            H_flipped_joint_proposal_dict["proposals_pseudo_roih"] = H_flipped_pesudo_proposals_roih_unsup_k
+            
+            
+            #--------------------------------------------- Pseudo labeling for the Vertical Fliped for the copy of original images --------------------
+            with torch.no_grad():
+                (
+                    _,
+                    V_flipped_proposals_rpn_unsup_k,
+                    V_flipped_proposals_roih_unsup_k,
+                    _,
+                ) = self.model_teacher(V_flipped_unlabel_data_k, branch="unsup_data_weak")
+
+            #  Pseudo-labeling
+            cur_threshold = self.cfg.SEMISUPNET.BBOX_THRESHOLD
+
+            V_flipped_joint_proposal_dict = {}
+            V_flipped_joint_proposal_dict["proposals_rpn"] = V_flipped_proposals_rpn_unsup_k
+            (
+                V_flipped_pesudo_proposals_rpn_unsup_k,
+                V_flipped_nun_pseudo_bbox_rpn,
+            ) = self.process_pseudo_label(
+                V_flipped_proposals_rpn_unsup_k, cur_threshold, "rpn", "thresholding"
+            )
+            V_flipped_joint_proposal_dict["proposals_pseudo_rpn"] = V_flipped_pesudo_proposals_rpn_unsup_k
+            # Pseudo_labeling for ROI head (bbox location/objectness)
+            V_flipped_pesudo_proposals_roih_unsup_k, _ = self.process_pseudo_label(
+                V_flipped_proposals_roih_unsup_k, cur_threshold, "roih", "thresholding"
+            )
+            V_flipped_joint_proposal_dict["proposals_pseudo_roih"] = V_flipped_pesudo_proposals_roih_unsup_k
+            
+            
+            #--------------------------------------------- Pseudo labeling for the contrast 1 for the copy of original images --------------------
+            with torch.no_grad():
+                (
+                    _,
+                    C1_proposals_rpn_unsup_k,
+                    C1_proposals_roih_unsup_k,
+                    _,
+                ) = self.model_teacher(C_enhancement1_unlabel_data_k, branch="unsup_data_weak")
+
+            #  Pseudo-labeling
+            cur_threshold = self.cfg.SEMISUPNET.BBOX_THRESHOLD
+
+            C1_joint_proposal_dict = {}
+            C1_joint_proposal_dict["proposals_rpn"] = C1_proposals_rpn_unsup_k
+            (
+                C1_pesudo_proposals_rpn_unsup_k,
+                C1_nun_pseudo_bbox_rpn,
+            ) = self.process_pseudo_label(
+                C1_proposals_rpn_unsup_k, cur_threshold, "rpn", "thresholding"
+            )
+            C1_joint_proposal_dict["proposals_pseudo_rpn"] = C1_pesudo_proposals_rpn_unsup_k
+            # Pseudo_labeling for ROI head (bbox location/objectness)
+            C1_pesudo_proposals_roih_unsup_k, _ = self.process_pseudo_label(
+                C1_proposals_roih_unsup_k, cur_threshold, "roih", "thresholding"
+            )
+            C1_joint_proposal_dict["proposals_pseudo_roih"] = C1_pesudo_proposals_roih_unsup_k
+          
+            
+            
+            #--------------------------------------------- Pseudo labeling for the contrast 2 for the copy of original images --------------------
+            with torch.no_grad():
+                (
+                    _,
+                    C2_proposals_rpn_unsup_k,
+                    C2_proposals_roih_unsup_k,
+                    _,
+                ) = self.model_teacher(C_enhancement2_unlabel_data_k, branch="unsup_data_weak")
+
+            #  Pseudo-labeling
+            cur_threshold = self.cfg.SEMISUPNET.BBOX_THRESHOLD
+
+            C2_joint_proposal_dict = {}
+            C2_joint_proposal_dict["proposals_rpn"] = C2_proposals_rpn_unsup_k
+            (
+                C2_pesudo_proposals_rpn_unsup_k,
+                C2_nun_pseudo_bbox_rpn,
+            ) = self.process_pseudo_label(
+                C2_proposals_rpn_unsup_k, cur_threshold, "rpn", "thresholding"
+            )
+            C2_joint_proposal_dict["proposals_pseudo_rpn"] = C2_pesudo_proposals_rpn_unsup_k
+            # Pseudo_labeling for ROI head (bbox location/objectness)
+            C2_pesudo_proposals_roih_unsup_k, _ = self.process_pseudo_label(
+                C2_proposals_roih_unsup_k, cur_threshold, "roih", "thresholding"
+            )
+            C2_joint_proposal_dict["proposals_pseudo_roih"] = C2_pesudo_proposals_roih_unsup_k
+            
+            
+            
+            #--------------------------------------------- Pseudo labeling for the contrast 3 for the copy of original images --------------------
+            with torch.no_grad():
+                (
+                    _,
+                    C3_proposals_rpn_unsup_k,
+                    C3_proposals_roih_unsup_k,
+                    _,
+                ) = self.model_teacher(C_enhancement3_unlabel_data_k, branch="unsup_data_weak")
+
+            #  Pseudo-labeling
+            cur_threshold = self.cfg.SEMISUPNET.BBOX_THRESHOLD
+
+            C3_joint_proposal_dict = {}
+            C3_joint_proposal_dict["proposals_rpn"] = C3_proposals_rpn_unsup_k
+            (
+                C3_pesudo_proposals_rpn_unsup_k,
+                C3_nun_pseudo_bbox_rpn,
+            ) = self.process_pseudo_label(
+                C3_proposals_rpn_unsup_k, cur_threshold, "rpn", "thresholding"
+            )
+            C3_joint_proposal_dict["proposals_pseudo_rpn"] = C3_pesudo_proposals_rpn_unsup_k
+            # Pseudo_labeling for ROI head (bbox location/objectness)
+            C3_pesudo_proposals_roih_unsup_k, _ = self.process_pseudo_label(
+                C3_proposals_roih_unsup_k, cur_threshold, "roih", "thresholding"
+            )
+            C3_joint_proposal_dict["proposals_pseudo_roih"] = C3_pesudo_proposals_roih_unsup_k
+            
+            
+            
+            #--------------------------------------------- Pseudo labeling for the Brightness 1 for the copy of original images --------------------
+            with torch.no_grad():
+                (
+                    _,
+                    B1_proposals_rpn_unsup_k,
+                    B1_proposals_roih_unsup_k,
+                    _,
+                ) = self.model_teacher(B_enhancement1_unlabel_data_k, branch="unsup_data_weak")
+
+            #  Pseudo-labeling
+            cur_threshold = self.cfg.SEMISUPNET.BBOX_THRESHOLD
+
+            B1_joint_proposal_dict = {}
+            B1_joint_proposal_dict["proposals_rpn"] = B1_proposals_rpn_unsup_k
+            (
+                B1_pesudo_proposals_rpn_unsup_k,
+                B1_nun_pseudo_bbox_rpn,
+            ) = self.process_pseudo_label(
+                B1_proposals_rpn_unsup_k, cur_threshold, "rpn", "thresholding"
+            )
+            B1_joint_proposal_dict["proposals_pseudo_rpn"] = B1_pesudo_proposals_rpn_unsup_k
+            # Pseudo_labeling for ROI head (bbox location/objectness)
+            B1_pesudo_proposals_roih_unsup_k, _ = self.process_pseudo_label(
+                B1_proposals_roih_unsup_k, cur_threshold, "roih", "thresholding"
+            )
+            B1_joint_proposal_dict["proposals_pseudo_roih"] = B1_pesudo_proposals_roih_unsup_k
+            
+            
+            
+            #--------------------------------------------- Pseudo labeling for the Brightness 2 for the copy of original images --------------------
+            with torch.no_grad():
+                (
+                    _,
+                    B2_proposals_rpn_unsup_k,
+                    B2_proposals_roih_unsup_k,
+                    _,
+                ) = self.model_teacher(B_enhancement2_unlabel_data_k, branch="unsup_data_weak")
+
+            #  Pseudo-labeling
+            cur_threshold = self.cfg.SEMISUPNET.BBOX_THRESHOLD
+
+            B2_joint_proposal_dict = {}
+            B2_joint_proposal_dict["proposals_rpn"] = B2_proposals_rpn_unsup_k
+            (
+                B2_pesudo_proposals_rpn_unsup_k,
+                B2_nun_pseudo_bbox_rpn,
+            ) = self.process_pseudo_label(
+                B2_proposals_rpn_unsup_k, cur_threshold, "rpn", "thresholding"
+            )
+            B2_joint_proposal_dict["proposals_pseudo_rpn"] = B2_pesudo_proposals_rpn_unsup_k
+            # Pseudo_labeling for ROI head (bbox location/objectness)
+            B2_pesudo_proposals_roih_unsup_k, _ = self.process_pseudo_label(
+                B2_proposals_roih_unsup_k, cur_threshold, "roih", "thresholding"
+            )
+            B2_joint_proposal_dict["proposals_pseudo_roih"] = B2_pesudo_proposals_roih_unsup_k
+            
+            
+            
+            
+            
+            #--------------------------------------------- Pseudo labeling for the Gaussian Blur 1  for the copy of original images --------------------
+            with torch.no_grad():
+                (
+                    _,
+                    GB1_proposals_rpn_unsup_k,
+                    GB1_proposals_roih_unsup_k,
+                    _,
+                ) = self.model_teacher(GaussianBlur1_unlabel_data_k, branch="unsup_data_weak")
+
+            #  Pseudo-labeling
+            cur_threshold = self.cfg.SEMISUPNET.BBOX_THRESHOLD
+
+            GB1_joint_proposal_dict = {}
+            GB1_joint_proposal_dict["proposals_rpn"] = GB1_proposals_rpn_unsup_k
+            (
+                GB1_pesudo_proposals_rpn_unsup_k,
+                GB1_nun_pseudo_bbox_rpn,
+            ) = self.process_pseudo_label(
+                GB1_proposals_rpn_unsup_k, cur_threshold, "rpn", "thresholding"
+            )
+            GB1_joint_proposal_dict["proposals_pseudo_rpn"] = GB1_pesudo_proposals_rpn_unsup_k
+            # Pseudo_labeling for ROI head (bbox location/objectness)
+            GB1_pesudo_proposals_roih_unsup_k, _ = self.process_pseudo_label(
+                GB1_proposals_roih_unsup_k, cur_threshold, "roih", "thresholding"
+            )
+            GB1_joint_proposal_dict["proposals_pseudo_roih"] = GB1_pesudo_proposals_roih_unsup_k
+            
+            
+            
+            
+            
+            
+            # -------------------------------------- Using Img2Vec for processing images embeddings starts here -----------------------------------------
+            
+            # For each image extract the bbounding boxes coordinates as tuples and draw them on the image
+            
+            cos_Sim=[] # array of the similarity scores of the pseudo labelled images embeddings
+            #   -------------------------------------- Initialize Img2Vec with GPU for processing images embeddings -----------------------------------------
+            img2vec = Img2Vec(cuda=True, model='resnet50', layer='default', layer_output_size=2304) # call for the Feacture extractor
+            print("------------------- Feacture Extractor Model=",img2vec.model_name,"------------------------------\n")
+            
+            vec_labeled_images=[] # array of the embeddings for selected labeled images having the same classes as the predicted classes
+            vec_H_labeled_images=[] # Horizontal flip image array
+            vec_V_labeled_images=[]
+            vec_C1_labeled_images=[]
+            vec_C2_labeled_images=[]
+            vec_C3_labeled_images=[]
+            vec_B1_labeled_images=[]
+            vec_B2_labeled_images=[]
+            vec_GB1_labeled_images=[]
+            
+            for jj in range(len(pesudo_proposals_roih_unsup_k)):
+                vec_labeled=[] # array of the embeddings of the selected labeled images having same classe(s) as predicted on this unlabled image 
+                vec_H_labeled=[]
+                vec_V_labeled=[]
+                vec_C1_labeled=[]
+                vec_C2_labeled=[]
+                vec_C3_labeled=[]
+                vec_B1_labeled=[]
+                vec_B2_labeled=[]
+                vec_GB1_labeled=[]
+                
+                
+                image_path = images[jj]  #  your original image array, image read with PIL (Image.open())
+                copy_image_path = images[jj]  #  The image copy array
+                H_flipped_image_path=H_flipped_images[jj] #  The array of the image copy horizontal flipped
+                V_flipped_image_path=V_flipped_images[jj] #  The array of the image copy vertical flipped
+                
+                C1_image_path=C1_images[jj]
+                C2_image_path=C2_images[jj]
+                C3_image_path=C3_images[jj]
+                B1_image_path=B1_images[jj]
+                B2_image_path=B2_images[jj]
+                GB1_image_path=GB1_images[jj]
+                
+                #print("-------------Org_Bbox ",jj," =",pesudo_proposals_roih_unsup_k[jj],"---------------------\n")
+                #
+                #
+                # --------------Get the Predictions Classes for the unlabeled image and get the corresponding labeled image embedding---------------
+                
+                predClasses = pesudo_proposals_roih_unsup_k[jj].gt_classes.cpu().numpy()  # Convert tensor to numpy array and move to CPU
+                #print("------------------------------ predClasses=",predClasses,"------------------------\n")
+                labeled_Images, labeled_bbox= get_same_class_labelled_images(predClasses)  # get the same classes labeled images and their bounding boxes
+                
+                #print("------------------labeled_Images=",labeled_Images,"-------------------------\n")
+                #print("------------------labeled_bbox=",labeled_bbox,"-------------------------\n")
+                labeled_bbox_array= np.array(labeled_bbox) # convert list into numpy array
+                labeled_bbox_tuples_values = convert_boxes_to_tuples(labeled_bbox_array) # convert labeled bboxes into tuples
+                #print("------------------labeled_bbox_tuples_values=",labeled_bbox_tuples_values,"-------------------------\n")
+                # if there are bboxes for the labeled image
+                labeled_cropped_images=[] # Array of cropped labeled images
+                NbItems=len(labeled_bbox_tuples_values)
+                
+                if NbItems!= 0:
+                    for iii in range(len(labeled_Images)): 
+                        bbbox=labeled_bbox_tuples_values[iii]
+                        xmin=bbbox[0]
+                        ymin=bbbox[1]
+                        w=bbbox[2]
+                        h=bbbox[3]
+                        x1,y1,x2,y2=convert_bbox(xmin,ymin,w,h)
+                        #x1,y1,x2,y2=yolobbox2bbox(xmin,ymin,w,h)
+                            
+                        bbox = (x1,y1,x2, y2) #  the coordinates
+                        #print("------------------bbox=",bbox,"-------------------------\n")
+                        the_image_path=labeled_Images[iii] # get the image array (PIL.open())
+                        # Crop the image using the bounding box coordinates
+                        labeled_cropped_image= the_image_path.crop(bbox)
+                        labeled_cropped_images.append(labeled_cropped_image)
+                    # combined all the cropped labeled images for all the detected classes
+                   
+                    combined_image =labeled_cropped_images[0]
+                    #combined_image = combine_images(labeled_cropped_images[0], labeled_cropped_images[1]) # combined all the cropped selected labeled images for all the detected classes
+                    if NbItems >= 2:
+                        cpt=NbItems-1
+                        while cpt>0:
+                            combined_image=combine_images(combined_image, labeled_cropped_images[NbItems-cpt])
+                            cpt=cpt-1
+               
+                    resized_labeled_images = combined_image.resize((224,224), Image.Resampling.LANCZOS) # final labeled image containing all the cropped from all the detected classes
+                    vec_labeled = img2vec.get_vec(resized_labeled_images, tensor=False) # get the embeddings vectors
+                    vec_labeled = np.array(vec_labeled) # convert list into array to be able to use reshape()
+                    vec_labeled_images.append(vec_labeled)    
+                    
+                    # Perform the horizontal flip
+                    H_flipped_image_Labeled = resized_labeled_images.transpose(Image.FLIP_LEFT_RIGHT)
+                    vec_H_labeled = img2vec.get_vec(H_flipped_image_Labeled, tensor=False) # get the embeddings vectors
+                    vec_H_labeled = np.array(vec_H_labeled) # convert list into array to be able to use reshape()
+                    vec_H_labeled_images.append(vec_H_labeled)    
+                    
+                    # Perform the vertical flip
+                    V_flipped_image_Labeled = resized_labeled_images.transpose(Image.FLIP_TOP_BOTTOM)
+                    vec_V_labeled = img2vec.get_vec(V_flipped_image_Labeled, tensor=False) # get the embeddings vectors
+                    vec_V_labeled = np.array(vec_V_labeled) # convert list into array to be able to use reshape()
+                    vec_V_labeled_images.append(vec_V_labeled)  
+                    
+                    # Perform the contrast enhancement 1
+                    C1_image_Labeled = constrast_enh(resized_labeled_images,0.7)
+                    vec_C1_labeled = img2vec.get_vec(C1_image_Labeled, tensor=False) # get the embeddings vectors
+                    vec_C1_labeled = np.array(vec_C1_labeled) # convert list into array to be able to use reshape()
+                    vec_C1_labeled_images.append(vec_C1_labeled) 
+                    
+                    # Perform the contrast enhancement 2
+                    C2_image_Labeled = constrast_enh(resized_labeled_images,1.3)
+                    vec_C2_labeled = img2vec.get_vec(C2_image_Labeled, tensor=False) # get the embeddings vectors
+                    vec_C2_labeled = np.array(vec_C2_labeled) # convert list into array to be able to use reshape()
+                    vec_C2_labeled_images.append(vec_C2_labeled) 
+                    
+                    # Perform the contrast enhancement 3
+                    C3_image_Labeled = constrast_enh(resized_labeled_images,1.5)
+                    vec_C3_labeled = img2vec.get_vec(C3_image_Labeled, tensor=False) # get the embeddings vectors
+                    vec_C3_labeled = np.array(vec_C3_labeled) # convert list into array to be able to use reshape()
+                    vec_C3_labeled_images.append(vec_C3_labeled) 
+                    
+                    # Perform the Brightness enhancement 1
+                    B1_image_Labeled = brightness_enh(resized_labeled_images,0.8)
+                    vec_B1_labeled = img2vec.get_vec(B1_image_Labeled, tensor=False) # get the embeddings vectors
+                    vec_B1_labeled = np.array(vec_B1_labeled) # convert list into array to be able to use reshape()
+                    vec_B1_labeled_images.append(vec_B1_labeled)
+                    
+                    # Perform the Brightness enhancement 2
+                    B2_image_Labeled = brightness_enh(resized_labeled_images,1.2)
+                    vec_B2_labeled = img2vec.get_vec(B2_image_Labeled, tensor=False) # get the embeddings vectors
+                    vec_B2_labeled = np.array(vec_B2_labeled) # convert list into array to be able to use reshape()
+                    vec_B2_labeled_images.append(vec_B2_labeled)
+                    
+                    # Perform the Gaussian Blur 1
+                    GB1_image_Labeled = gaussian_Blurr(resized_labeled_images,5,0.1,5)
+                    vec_GB1_labeled = img2vec.get_vec(GB1_image_Labeled, tensor=False) # get the embeddings vectors
+                    vec_GB1_labeled = np.array(vec_GB1_labeled) # convert list into array to be able to use reshape()
+                    vec_GB1_labeled_images.append(vec_GB1_labeled)
+                #--------------------------------------
+                
+                
+                
+                org_boxes_tuples_values = convert_boxes_to_tuples(extract_boxes(pesudo_proposals_roih_unsup_k[jj]))
+                org_copy_boxes_tuples_values = convert_boxes_to_tuples(extract_boxes(copy_pesudo_proposals_roih_unsup_k[jj]))
+                H_flipped_copy_boxes_tuples_values = convert_boxes_to_tuples(extract_boxes(H_flipped_pesudo_proposals_roih_unsup_k[jj]))
+                V_flipped_copy_boxes_tuples_values = convert_boxes_to_tuples(extract_boxes(V_flipped_pesudo_proposals_roih_unsup_k[jj]))
+                
+                C1_boxes_tuples_values = convert_boxes_to_tuples(extract_boxes(C1_pesudo_proposals_roih_unsup_k[jj]))
+                C2_boxes_tuples_values = convert_boxes_to_tuples(extract_boxes(C2_pesudo_proposals_roih_unsup_k[jj]))
+                C3_boxes_tuples_values = convert_boxes_to_tuples(extract_boxes(C3_pesudo_proposals_roih_unsup_k[jj]))
+                B1_boxes_tuples_values = convert_boxes_to_tuples(extract_boxes(B1_pesudo_proposals_roih_unsup_k[jj]))
+                B2_boxes_tuples_values = convert_boxes_to_tuples(extract_boxes(B2_pesudo_proposals_roih_unsup_k[jj]))
+                GB1_boxes_tuples_values = convert_boxes_to_tuples(extract_boxes(GB1_pesudo_proposals_roih_unsup_k[jj]))
+                
+                # By defaut there is no predicted pseudo bounding boxes cropped
+                org_cropped_image=empty_image()
+                copy_org_cropped_image=empty_image()
+                H_flipped_copy_cropped_image=empty_image()
+                V_flipped_copy_cropped_image=empty_image() 
+                
+                C1_cropped_image=empty_image() 
+                C2_cropped_image=empty_image()
+                C3_cropped_image=empty_image()
+                B1_cropped_image=empty_image()
+                B2_cropped_image=empty_image()
+                GB1_cropped_image=empty_image()
+                
+                # By defaut all similarities scores between different cropped pseudo labels  are equal to 0
+                cos_sim_org_copy_org=0.0 
+                cos_sim_HF_VF=0.0
+                cos_sim_org_HF=0.0
+                cos_sim_org_VF=0.0
+                cos_sim_copy_org_HF=0.0 
+                cos_sim_copy_org_VF=0.0
+                
+                cos_sim_labeled_org=0.0
+                cos_sim_labeled_copy_org=0.0
+                cos_sim_labeled_HF=0.0
+                cos_sim_labeled_VF=0.0
+                
+                cos_sim_org_C1=0.0
+                cos_sim_org_C2=0.0
+                cos_sim_org_C3=0.0
+                cos_sim_org_B1=0.0
+                cos_sim_org_B2=0.0
+                cos_sim_org_GB1=0.0
+                
+                cos_sim_copy_org_C1=0.0 
+                cos_sim_copy_org_C2=0.0 
+                cos_sim_copy_org_C3=0.0 
+                cos_sim_copy_org_B1=0.0 
+                cos_sim_copy_org_B2=0.0 
+                cos_sim_copy_org_GB1=0.0 
+                
+                cos_sim_HF_C1=0.0 
+                cos_sim_HF_C2=0.0 
+                cos_sim_HF_C3=0.0 
+                cos_sim_HF_B1=0.0 
+                cos_sim_HF_B2=0.0 
+                cos_sim_HF_GB1=0.0 
+                
+                cos_sim_VF_C1=0.0
+                cos_sim_VF_C2=0.0
+                cos_sim_VF_C3=0.0
+                cos_sim_VF_B1=0.0
+                cos_sim_VF_B2=0.0
+                cos_sim_VF_GB1=0.0
+                
+                cos_sim_labeled_C1=0.0
+                cos_sim_labeled_C2=0.0
+                cos_sim_labeled_C3=0.0
+                cos_sim_labeled_B1=0.0
+                cos_sim_labeled_B2=0.0
+                cos_sim_labeled_GB1=0.0
+                
+                cos_sim_C1_C2=0.0
+                cos_sim_C1_C3=0.0
+                cos_sim_C1_B1=0.0
+                cos_sim_C1_B2=0.0
+                cos_sim_C1_GB1=0.0
+                
+                cos_sim_C2_C3=0.0
+                cos_sim_C2_B1=0.0
+                cos_sim_C2_B2=0.0
+                cos_sim_C2_GB1=0.0
+                
+                cos_sim_C3_B1=0.0
+                cos_sim_C3_B2=0.0
+                cos_sim_C3_GB1=0.0
+                
+                cos_sim_B1_B2=0.0
+                cos_sim_B1_GB1=0.0
+                
+                cos_sim_B2_GB1=0.0
+                
+                
+                
+                # if there is a predicted bounding boxes for the unlabeled image with its augmented versions by the Teacher model
+                # do the following
+                
+                # if there are pseudo bboxes detected for the original image
+                if len(org_boxes_tuples_values)!= 0:
+                    # Get the minimum and maximum coordinates
+                    x_min, y_min, x_max, y_max = get_largest_bounding_box(org_boxes_tuples_values) #get the coordinates of the biggest bbox covering all candidates bboxes.
+                    bbox = (x_min, y_min, x_max, y_max)
+                    org_cropped_image=crop_image(image_path,bbox)
+                
+                # if there are pseudo bboxes detected for the copy of the original image
+                if len(org_copy_boxes_tuples_values)!= 0:
+                    # Get the minimum and maximum coordinates
+                    x_min, y_min, x_max, y_max = get_largest_bounding_box(org_copy_boxes_tuples_values) #get the coordinates of the biggest bbox covering all candidates bboxes.
+                    bbox = (x_min, y_min, x_max, y_max)
+                    copy_org_cropped_image=crop_image(copy_image_path,bbox)
+                    
+                # if there are pseudo bboxes detected for the horizontal fliped of the image    
+                if len(H_flipped_copy_boxes_tuples_values)!= 0:
+                    # Get the minimum and maximum coordinates
+                    x_min, y_min, x_max, y_max = get_largest_bounding_box(H_flipped_copy_boxes_tuples_values) #get the coordinates of the biggest bbox covering all candidates bboxes.
+                    bbox = (x_min, y_min, x_max, y_max)
+                    H_flipped_copy_cropped_image=crop_image(H_flipped_image_path,bbox)
+                
+                # if there are pseudo bboxes detected for the vertical fliped of the image     
+                if len(V_flipped_copy_boxes_tuples_values)!= 0:
+                    # Get the minimum and maximum coordinates
+                    x_min, y_min, x_max, y_max = get_largest_bounding_box(V_flipped_copy_boxes_tuples_values) #get the coordinates of the biggest bbox covering all candidates bboxes.
+                    bbox = (x_min, y_min, x_max, y_max)
+                    V_flipped_copy_cropped_image=crop_image(V_flipped_image_path,bbox)
+               
+                
+                # if there are pseudo bboxes detected      
+                if len(C1_boxes_tuples_values)!= 0:
+                    # Get the minimum and maximum coordinates
+                    x_min, y_min, x_max, y_max = get_largest_bounding_box(C1_boxes_tuples_values) #get the coordinates of the biggest bbox covering all candidates bboxes.
+                    bbox = (x_min, y_min, x_max, y_max)
+                    C1_cropped_image=crop_image(C1_image_path,bbox)
+                
+                # if there are pseudo bboxes detected      
+                if len(C2_boxes_tuples_values)!= 0:
+                    # Get the minimum and maximum coordinates
+                    x_min, y_min, x_max, y_max = get_largest_bounding_box(C2_boxes_tuples_values) #get the coordinates of the biggest bbox covering all candidates bboxes.
+                    bbox = (x_min, y_min, x_max, y_max)
+                    C2_cropped_image=crop_image(C2_image_path,bbox)
+                    
+                # if there are pseudo bboxes detected      
+                if len(C3_boxes_tuples_values)!= 0:
+                    # Get the minimum and maximum coordinates
+                    x_min, y_min, x_max, y_max = get_largest_bounding_box(C3_boxes_tuples_values) #get the coordinates of the biggest bbox covering all candidates bboxes.
+                    bbox = (x_min, y_min, x_max, y_max)
+                    C3_cropped_image=crop_image(C3_image_path,bbox)
+                    
+                # if there are pseudo bboxes detected      
+                if len(B1_boxes_tuples_values)!= 0:
+                    # Get the minimum and maximum coordinates
+                    x_min, y_min, x_max, y_max = get_largest_bounding_box(B1_boxes_tuples_values) #get the coordinates of the biggest bbox covering all candidates bboxes.
+                    bbox = (x_min, y_min, x_max, y_max)
+                    B1_cropped_image=crop_image(B1_image_path,bbox)
+                
+                # if there are pseudo bboxes detected      
+                if len(B2_boxes_tuples_values)!= 0:
+                    # Get the minimum and maximum coordinates
+                    x_min, y_min, x_max, y_max = get_largest_bounding_box(B2_boxes_tuples_values) #get the coordinates of the biggest bbox covering all candidates bboxes.
+                    bbox = (x_min, y_min, x_max, y_max)
+                    B2_cropped_image=crop_image(B2_image_path,bbox)
+                
+                # if there are pseudo bboxes detected      
+                if len(GB1_boxes_tuples_values)!= 0:
+                    # Get the minimum and maximum coordinates
+                    x_min, y_min, x_max, y_max = get_largest_bounding_box(GB1_boxes_tuples_values) #get the coordinates of the biggest bbox covering all candidates bboxes.
+                    bbox = (x_min, y_min, x_max, y_max)
+                    GB1_cropped_image=crop_image(GB1_image_path,bbox)
+                    
+                    
+                # Generate the embbedings vectors for each using img2vec, returned as a torch FloatTensor 
+                # Using PyTorch Cosine Similarity 
+                
+                vec_org=np.array([])
+                vec_copy_org=np.array([])
+                vec_H_fliped=np.array([])
+                vec_V_fliped=np.array([])
+                
+                vec_C1=np.array([])
+                vec_C2=np.array([])
+                vec_C3=np.array([])
+                vec_B1=np.array([])
+                vec_B2=np.array([])
+                vec_GB1=np.array([])
+                
+                if (len(org_boxes_tuples_values)!= 0 and NbItems!= 0):
+                    vec_org = img2vec.get_vec(org_cropped_image, tensor=False)
+                    cos_sim_labeled_org=cosine_similarity(vec_labeled.reshape((1, -1)), vec_org.reshape((1, -1)))[0][0] # similarity with the labeled embeddings
+                if (len(org_copy_boxes_tuples_values)!= 0 and NbItems!= 0):    
+                    vec_copy_org = img2vec.get_vec(copy_org_cropped_image, tensor=False)
+                    cos_sim_labeled_copy_org=cosine_similarity(vec_labeled.reshape((1, -1)), vec_copy_org.reshape((1, -1)))[0][0]
+                if (len(H_flipped_copy_boxes_tuples_values)!= 0 and NbItems!= 0):
+                    vec_H_fliped = img2vec.get_vec(H_flipped_copy_cropped_image, tensor=False)
+                    cos_sim_labeled_HF=cosine_similarity(vec_labeled.reshape((1, -1)), vec_H_fliped.reshape((1, -1)))[0][0]
+                if (len(V_flipped_copy_boxes_tuples_values)!= 0 and NbItems!= 0):
+                    vec_V_fliped = img2vec.get_vec(V_flipped_copy_cropped_image, tensor=False)
+                    cos_sim_labeled_VF=cosine_similarity(vec_labeled.reshape((1, -1)), vec_V_fliped.reshape((1, -1)))[0][0]
+                
+                if (len(C1_boxes_tuples_values)!= 0 and NbItems!= 0):    
+                    vec_C1 = img2vec.get_vec(C1_cropped_image, tensor=False)
+                    cos_sim_labeled_C1=cosine_similarity(vec_labeled.reshape((1, -1)), vec_C1.reshape((1, -1)))[0][0]
+                
+                if (len(C2_boxes_tuples_values)!= 0 and NbItems!= 0):    
+                    vec_C2 = img2vec.get_vec(C2_cropped_image, tensor=False)
+                    cos_sim_labeled_C2=cosine_similarity(vec_labeled.reshape((1, -1)), vec_C2.reshape((1, -1)))[0][0]
+                
+                if (len(C3_boxes_tuples_values)!= 0 and NbItems!= 0):    
+                    vec_C3 = img2vec.get_vec(C3_cropped_image, tensor=False)
+                    cos_sim_labeled_C3=cosine_similarity(vec_labeled.reshape((1, -1)), vec_C3.reshape((1, -1)))[0][0]
+                    
+                if (len(B1_boxes_tuples_values)!= 0 and NbItems!= 0):    
+                    vec_B1 = img2vec.get_vec(B1_cropped_image, tensor=False)
+                    cos_sim_labeled_B1=cosine_similarity(vec_labeled.reshape((1, -1)), vec_B1.reshape((1, -1)))[0][0]
+                
+                if (len(B2_boxes_tuples_values)!= 0 and NbItems!= 0):    
+                    vec_B2 = img2vec.get_vec(B2_cropped_image, tensor=False)
+                    cos_sim_labeled_B2=cosine_similarity(vec_labeled.reshape((1, -1)), vec_B2.reshape((1, -1)))[0][0]
+                
+                if (len(GB1_boxes_tuples_values)!= 0 and NbItems!= 0):    
+                    vec_GB1 = img2vec.get_vec(GB1_cropped_image, tensor=False)
+                    cos_sim_labeled_GB1=cosine_similarity(vec_labeled.reshape((1, -1)), vec_GB1.reshape((1, -1)))[0][0]
+                    
+                    
+                # Using PyTorch Cosine Similarity 
+                # For each unlabled image Compute the similarity scores (cosinus sim) for between each (1x6)
+                if (len(org_boxes_tuples_values)!= 0 and len(org_copy_boxes_tuples_values)!= 0):
+                    vec_org = img2vec.get_vec(org_cropped_image, tensor=False)
+                    vec_copy_org = img2vec.get_vec(copy_org_cropped_image, tensor=False)
+                    cos_sim_org_copy_org = cosine_similarity(vec_org.reshape((1, -1)), vec_copy_org.reshape((1, -1)))[0][0]
+                if (len(H_flipped_copy_boxes_tuples_values)!= 0 and len(V_flipped_copy_boxes_tuples_values)!= 0):
+                    vec_H_fliped = img2vec.get_vec(H_flipped_copy_cropped_image, tensor=False)
+                    vec_V_fliped = img2vec.get_vec(V_flipped_copy_cropped_image, tensor=False)
+                    cos_sim_HF_VF = cosine_similarity(vec_H_fliped.reshape((1, -1)), vec_V_fliped.reshape((1, -1)))[0][0]
+                if (len(org_boxes_tuples_values)!= 0 and  len(H_flipped_copy_boxes_tuples_values)!= 0):
+                    vec_org = img2vec.get_vec(org_cropped_image, tensor=False)
+                    vec_H_fliped = img2vec.get_vec(H_flipped_copy_cropped_image, tensor=False)
+                    cos_sim_org_HF = cosine_similarity(vec_org.reshape((1, -1)), vec_H_fliped.reshape((1, -1)))[0][0]
+                if (len(org_boxes_tuples_values)!= 0 and  len(V_flipped_copy_boxes_tuples_values)!= 0): 
+                    vec_org = img2vec.get_vec(org_cropped_image, tensor=False)
+                    vec_V_fliped = img2vec.get_vec(V_flipped_copy_cropped_image, tensor=False)
+                    cos_sim_org_VF = cosine_similarity(vec_org.reshape((1, -1)), vec_V_fliped.reshape((1, -1)))[0][0]
+                if (len(org_copy_boxes_tuples_values)!= 0 and  len(H_flipped_copy_boxes_tuples_values)!= 0):
+                    vec_H_fliped = img2vec.get_vec(H_flipped_copy_cropped_image, tensor=False)
+                    vec_copy_org = img2vec.get_vec(copy_org_cropped_image, tensor=False)
+                    cos_sim_copy_org_HF = cosine_similarity(vec_H_fliped.reshape((1, -1)), vec_copy_org.reshape((1, -1)))[0][0]
+                if (len(org_copy_boxes_tuples_values)!= 0 and  len(V_flipped_copy_boxes_tuples_values)!= 0):
+                    vec_V_fliped = img2vec.get_vec(V_flipped_copy_cropped_image, tensor=False)
+                    vec_copy_org = img2vec.get_vec(copy_org_cropped_image, tensor=False)
+                    cos_sim_copy_org_VF = cosine_similarity(vec_V_fliped.reshape((1, -1)), vec_copy_org.reshape((1, -1)))[0][0]
+                    
+                # simmilarrity metrics ,.......    
+                    
+                if (len(org_boxes_tuples_values)!= 0 and len(C1_boxes_tuples_values)!= 0):
+                    vec_org = img2vec.get_vec(org_cropped_image, tensor=False)
+                    vec_C1 = img2vec.get_vec(C1_cropped_image, tensor=False)
+                    cos_sim_org_C1 = cosine_similarity(vec_org.reshape((1, -1)), vec_C1.reshape((1, -1)))[0][0]
+
+                if (len(org_boxes_tuples_values)!= 0 and len(C2_boxes_tuples_values)!= 0):
+                    vec_org = img2vec.get_vec(org_cropped_image, tensor=False)
+                    vec_C2 = img2vec.get_vec(C2_cropped_image, tensor=False)
+                    cos_sim_org_C2 = cosine_similarity(vec_org.reshape((1, -1)), vec_C2.reshape((1, -1)))[0][0]
+                
+                if (len(org_boxes_tuples_values)!= 0 and len(C3_boxes_tuples_values)!= 0):
+                    vec_org = img2vec.get_vec(org_cropped_image, tensor=False)
+                    vec_C3 = img2vec.get_vec(C3_cropped_image, tensor=False)
+                    cos_sim_org_C3 = cosine_similarity(vec_org.reshape((1, -1)), vec_C3.reshape((1, -1)))[0][0]
+                    
+                if (len(org_boxes_tuples_values)!= 0 and len(B1_boxes_tuples_values)!= 0):
+                    vec_org = img2vec.get_vec(org_cropped_image, tensor=False)
+                    vec_B1 = img2vec.get_vec(B1_cropped_image, tensor=False)
+                    cos_sim_org_B1 = cosine_similarity(vec_org.reshape((1, -1)), vec_B1.reshape((1, -1)))[0][0]
+                
+                if (len(org_boxes_tuples_values)!= 0 and len(B2_boxes_tuples_values)!= 0):
+                    vec_org = img2vec.get_vec(org_cropped_image, tensor=False)
+                    vec_B2 = img2vec.get_vec(B2_cropped_image, tensor=False)
+                    cos_sim_org_B2 = cosine_similarity(vec_org.reshape((1, -1)), vec_B2.reshape((1, -1)))[0][0]
+                
+                if (len(org_boxes_tuples_values)!= 0 and len(GB1_boxes_tuples_values)!= 0):
+                    vec_org = img2vec.get_vec(org_cropped_image, tensor=False)
+                    vec_GB1 = img2vec.get_vec(GB1_cropped_image, tensor=False)
+                    cos_sim_org_GB1 = cosine_similarity(vec_org.reshape((1, -1)), vec_GB1.reshape((1, -1)))[0][0]
+                    
+                    
+                if (len(org_copy_boxes_tuples_values)!= 0 and  len(C1_boxes_tuples_values)!= 0):
+                    vec_C1 = img2vec.get_vec(C1_cropped_image, tensor=False)
+                    vec_copy_org = img2vec.get_vec(copy_org_cropped_image, tensor=False)
+                    cos_sim_copy_org_C1 = cosine_similarity(vec_C1.reshape((1, -1)), vec_copy_org.reshape((1, -1)))[0][0]    
+                    
+                if (len(org_copy_boxes_tuples_values)!= 0 and  len(C2_boxes_tuples_values)!= 0):
+                    vec_C2 = img2vec.get_vec(C2_cropped_image, tensor=False)
+                    vec_copy_org = img2vec.get_vec(copy_org_cropped_image, tensor=False)
+                    cos_sim_copy_org_C2 = cosine_similarity(vec_C2.reshape((1, -1)), vec_copy_org.reshape((1, -1)))[0][0]
+                
+                if (len(org_copy_boxes_tuples_values)!= 0 and  len(C3_boxes_tuples_values)!= 0):
+                    vec_C3 = img2vec.get_vec(C3_cropped_image, tensor=False)
+                    vec_copy_org = img2vec.get_vec(copy_org_cropped_image, tensor=False)
+                    cos_sim_copy_org_C3 = cosine_similarity(vec_C3.reshape((1, -1)), vec_copy_org.reshape((1, -1)))[0][0]
+                
+                if (len(org_copy_boxes_tuples_values)!= 0 and  len(B1_boxes_tuples_values)!= 0):
+                    vec_B1 = img2vec.get_vec(B1_cropped_image, tensor=False)
+                    vec_copy_org = img2vec.get_vec(copy_org_cropped_image, tensor=False)
+                    cos_sim_copy_org_B1 = cosine_similarity(vec_B1.reshape((1, -1)), vec_copy_org.reshape((1, -1)))[0][0]
+                
+                if (len(org_copy_boxes_tuples_values)!= 0 and  len(B2_boxes_tuples_values)!= 0):
+                    vec_B2 = img2vec.get_vec(B2_cropped_image, tensor=False)
+                    vec_copy_org = img2vec.get_vec(copy_org_cropped_image, tensor=False)
+                    cos_sim_copy_org_B2 = cosine_similarity(vec_B2.reshape((1, -1)), vec_copy_org.reshape((1, -1)))[0][0]
+                    
+                if (len(org_copy_boxes_tuples_values)!= 0 and  len(GB1_boxes_tuples_values)!= 0):
+                    vec_GB1 = img2vec.get_vec(GB1_cropped_image, tensor=False)
+                    vec_copy_org = img2vec.get_vec(copy_org_cropped_image, tensor=False)
+                    cos_sim_copy_org_GB1 = cosine_similarity(vec_GB1.reshape((1, -1)), vec_copy_org.reshape((1, -1)))[0][0]
+                    
+                if (len(C1_boxes_tuples_values)!= 0 and  len(H_flipped_copy_boxes_tuples_values)!= 0):
+                    vec_H_fliped = img2vec.get_vec(H_flipped_copy_cropped_image, tensor=False)
+                    vec_C1 = img2vec.get_vec(C1_cropped_image, tensor=False)
+                    cos_sim_HF_C1 = cosine_similarity(vec_H_fliped.reshape((1, -1)), vec_C1.reshape((1, -1)))[0][0]    
+                
+                if (len(C2_boxes_tuples_values)!= 0 and  len(H_flipped_copy_boxes_tuples_values)!= 0):
+                    vec_H_fliped = img2vec.get_vec(H_flipped_copy_cropped_image, tensor=False)
+                    vec_C2 = img2vec.get_vec(C2_cropped_image, tensor=False)
+                    cos_sim_HF_C2 = cosine_similarity(vec_H_fliped.reshape((1, -1)), vec_C2.reshape((1, -1)))[0][0]
+                
+                if (len(C3_boxes_tuples_values)!= 0 and  len(H_flipped_copy_boxes_tuples_values)!= 0):
+                    vec_H_fliped = img2vec.get_vec(H_flipped_copy_cropped_image, tensor=False)
+                    vec_C3 = img2vec.get_vec(C3_cropped_image, tensor=False)
+                    cos_sim_HF_C3 = cosine_similarity(vec_H_fliped.reshape((1, -1)), vec_C3.reshape((1, -1)))[0][0]
+                
+                if (len(B1_boxes_tuples_values)!= 0 and  len(H_flipped_copy_boxes_tuples_values)!= 0):
+                    vec_H_fliped = img2vec.get_vec(H_flipped_copy_cropped_image, tensor=False)
+                    vec_B1 = img2vec.get_vec(B1_cropped_image, tensor=False)
+                    cos_sim_HF_B1 = cosine_similarity(vec_H_fliped.reshape((1, -1)), vec_B1.reshape((1, -1)))[0][0]
+                
+                if (len(B2_boxes_tuples_values)!= 0 and  len(H_flipped_copy_boxes_tuples_values)!= 0):
+                    vec_H_fliped = img2vec.get_vec(H_flipped_copy_cropped_image, tensor=False)
+                    vec_B2 = img2vec.get_vec(B2_cropped_image, tensor=False)
+                    cos_sim_HF_B2 = cosine_similarity(vec_H_fliped.reshape((1, -1)), vec_B2.reshape((1, -1)))[0][0]
+                
+                if (len(GB1_boxes_tuples_values)!= 0 and  len(H_flipped_copy_boxes_tuples_values)!= 0):
+                    vec_H_fliped = img2vec.get_vec(H_flipped_copy_cropped_image, tensor=False)
+                    vec_GB1 = img2vec.get_vec(GB1_cropped_image, tensor=False)
+                    cos_sim_HF_GB1 = cosine_similarity(vec_H_fliped.reshape((1, -1)), vec_GB1.reshape((1, -1)))[0][0]
+                    
+                    
+                if (len(C1_boxes_tuples_values)!= 0 and  len(V_flipped_copy_boxes_tuples_values)!= 0):
+                    vec_V_fliped = img2vec.get_vec(V_flipped_copy_cropped_image, tensor=False)
+                    vec_C1 = img2vec.get_vec(C1_cropped_image, tensor=False)
+                    cos_sim_VF_C1 = cosine_similarity(vec_V_fliped.reshape((1, -1)), vec_C1.reshape((1, -1)))[0][0]
+                        
+                if (len(C2_boxes_tuples_values)!= 0 and  len(V_flipped_copy_boxes_tuples_values)!= 0):
+                    vec_V_fliped = img2vec.get_vec(V_flipped_copy_cropped_image, tensor=False)
+                    vec_C2 = img2vec.get_vec(C2_cropped_image, tensor=False)
+                    cos_sim_VF_C2 = cosine_similarity(vec_V_fliped.reshape((1, -1)), vec_C2.reshape((1, -1)))[0][0]
+                
+                if (len(C3_boxes_tuples_values)!= 0 and  len(V_flipped_copy_boxes_tuples_values)!= 0):
+                    vec_V_fliped = img2vec.get_vec(V_flipped_copy_cropped_image, tensor=False)
+                    vec_C3 = img2vec.get_vec(C3_cropped_image, tensor=False)
+                    cos_sim_VF_C3 = cosine_similarity(vec_V_fliped.reshape((1, -1)), vec_C3.reshape((1, -1)))[0][0]
+                    
+                if (len(B1_boxes_tuples_values)!= 0 and  len(V_flipped_copy_boxes_tuples_values)!= 0):
+                    vec_V_fliped = img2vec.get_vec(V_flipped_copy_cropped_image, tensor=False)
+                    vec_B1 = img2vec.get_vec(B1_cropped_image, tensor=False)
+                    cos_sim_VF_B1 = cosine_similarity(vec_V_fliped.reshape((1, -1)), vec_B1.reshape((1, -1)))[0][0]  
+                
+                if (len(B2_boxes_tuples_values)!= 0 and  len(V_flipped_copy_boxes_tuples_values)!= 0):
+                    vec_V_fliped = img2vec.get_vec(V_flipped_copy_cropped_image, tensor=False)
+                    vec_B2 = img2vec.get_vec(B2_cropped_image, tensor=False)
+                    cos_sim_VF_B2 = cosine_similarity(vec_V_fliped.reshape((1, -1)), vec_B2.reshape((1, -1)))[0][0]
+                    
+                if (len(GB1_boxes_tuples_values)!= 0 and  len(V_flipped_copy_boxes_tuples_values)!= 0):
+                    vec_V_fliped = img2vec.get_vec(V_flipped_copy_cropped_image, tensor=False)
+                    vec_GB1 = img2vec.get_vec(GB1_cropped_image, tensor=False)
+                    cos_sim_VF_GB1 = cosine_similarity(vec_V_fliped.reshape((1, -1)), vec_GB1.reshape((1, -1)))[0][0]    
+                    
+                if (len(C1_boxes_tuples_values)!= 0 and  len(C2_boxes_tuples_values)!= 0):
+                    vec_C1 = img2vec.get_vec(C1_cropped_image, tensor=False)
+                    vec_C2 = img2vec.get_vec(C2_cropped_image, tensor=False)
+                    cos_sim_C1_C2 = cosine_similarity(vec_C1.reshape((1, -1)), vec_C2.reshape((1, -1)))[0][0]    
+                    
+                if (len(C1_boxes_tuples_values)!= 0 and  len(C3_boxes_tuples_values)!= 0):
+                    vec_C1 = img2vec.get_vec(C1_cropped_image, tensor=False)
+                    vec_C3 = img2vec.get_vec(C3_cropped_image, tensor=False)
+                    cos_sim_C1_C3 = cosine_similarity(vec_C1.reshape((1, -1)), vec_C3.reshape((1, -1)))[0][0] 
+                
+                if (len(C1_boxes_tuples_values)!= 0 and  len(B1_boxes_tuples_values)!= 0):
+                    vec_C1 = img2vec.get_vec(C1_cropped_image, tensor=False)
+                    vec_B1 = img2vec.get_vec(B1_cropped_image, tensor=False)
+                    cos_sim_C1_B1 = cosine_similarity(vec_C1.reshape((1, -1)), vec_B1.reshape((1, -1)))[0][0] 
+                    
+                if (len(C1_boxes_tuples_values)!= 0 and  len(B2_boxes_tuples_values)!= 0):
+                    vec_C1 = img2vec.get_vec(C1_cropped_image, tensor=False)
+                    vec_B2 = img2vec.get_vec(B2_cropped_image, tensor=False)
+                    cos_sim_C1_B2 = cosine_similarity(vec_C1.reshape((1, -1)), vec_B2.reshape((1, -1)))[0][0] 
+                       
+                if (len(C1_boxes_tuples_values)!= 0 and  len(GB1_boxes_tuples_values)!= 0):
+                    vec_C1 = img2vec.get_vec(C1_cropped_image, tensor=False)
+                    vec_GB1 = img2vec.get_vec(GB1_cropped_image, tensor=False)
+                    cos_sim_C1_GB1 = cosine_similarity(vec_C1.reshape((1, -1)), vec_GB1.reshape((1, -1)))[0][0] 
+                        
+                if (len(C2_boxes_tuples_values)!= 0 and  len(C3_boxes_tuples_values)!= 0):
+                    vec_C2 = img2vec.get_vec(C2_cropped_image, tensor=False)
+                    vec_C3 = img2vec.get_vec(C3_cropped_image, tensor=False)
+                    cos_sim_C2_C3 = cosine_similarity(vec_C2.reshape((1, -1)), vec_C3.reshape((1, -1)))[0][0]    
+                    
+                if (len(C2_boxes_tuples_values)!= 0 and  len(B1_boxes_tuples_values)!= 0):
+                    vec_C2 = img2vec.get_vec(C2_cropped_image, tensor=False)
+                    vec_B1 = img2vec.get_vec(B1_cropped_image, tensor=False)
+                    cos_sim_C2_B1 = cosine_similarity(vec_C2.reshape((1, -1)), vec_B1.reshape((1, -1)))[0][0]    
+                    
+                if (len(C2_boxes_tuples_values)!= 0 and  len(B2_boxes_tuples_values)!= 0):
+                    vec_C2 = img2vec.get_vec(C2_cropped_image, tensor=False)
+                    vec_B2 = img2vec.get_vec(B2_cropped_image, tensor=False)
+                    cos_sim_C2_B2 = cosine_similarity(vec_C2.reshape((1, -1)), vec_B2.reshape((1, -1)))[0][0]    
+                
+                if (len(C2_boxes_tuples_values)!= 0 and  len(GB1_boxes_tuples_values)!= 0):
+                    vec_C2 = img2vec.get_vec(C2_cropped_image, tensor=False)
+                    vec_GB1 = img2vec.get_vec(GB1_cropped_image, tensor=False)
+                    cos_sim_C2_GB1 = cosine_similarity(vec_C2.reshape((1, -1)), vec_GB1.reshape((1, -1)))[0][0]    
+                
+                if (len(C3_boxes_tuples_values)!= 0 and  len(B1_boxes_tuples_values)!= 0):
+                    vec_C3 = img2vec.get_vec(C3_cropped_image, tensor=False)
+                    vec_B1 = img2vec.get_vec(B1_cropped_image, tensor=False)
+                    cos_sim_C3_B1 = cosine_similarity(vec_C3.reshape((1, -1)), vec_B1.reshape((1, -1)))[0][0]
+                
+                if (len(C3_boxes_tuples_values)!= 0 and  len(B2_boxes_tuples_values)!= 0):
+                    vec_C3 = img2vec.get_vec(C3_cropped_image, tensor=False)
+                    vec_B2 = img2vec.get_vec(B2_cropped_image, tensor=False)
+                    cos_sim_C3_B2 = cosine_similarity(vec_C3.reshape((1, -1)), vec_B2.reshape((1, -1)))[0][0]
+                
+                if (len(C3_boxes_tuples_values)!= 0 and  len(GB1_boxes_tuples_values)!= 0):
+                    vec_C3 = img2vec.get_vec(C3_cropped_image, tensor=False)
+                    vec_GB1 = img2vec.get_vec(GB1_cropped_image, tensor=False)
+                    cos_sim_C3_GB1 = cosine_similarity(vec_C3.reshape((1, -1)), vec_GB1.reshape((1, -1)))[0][0]
+                
+                if (len(B1_boxes_tuples_values)!= 0 and  len(B2_boxes_tuples_values)!= 0):
+                    vec_B1 = img2vec.get_vec(B1_cropped_image, tensor=False)
+                    vec_B2 = img2vec.get_vec(B2_cropped_image, tensor=False)
+                    cos_sim_B1_B2 = cosine_similarity(vec_B1.reshape((1, -1)), vec_B2.reshape((1, -1)))[0][0]
+                
+                if (len(B1_boxes_tuples_values)!= 0 and  len(GB1_boxes_tuples_values)!= 0):
+                    vec_B1 = img2vec.get_vec(B1_cropped_image, tensor=False)
+                    vec_GB1 = img2vec.get_vec(GB1_cropped_image, tensor=False)
+                    cos_sim_B1_GB1 = cosine_similarity(vec_B1.reshape((1, -1)), vec_GB1.reshape((1, -1)))[0][0]   
+                
+                if (len(B2_boxes_tuples_values)!= 0 and  len(GB1_boxes_tuples_values)!= 0):
+                    vec_B2 = img2vec.get_vec(B2_cropped_image, tensor=False)
+                    vec_GB1 = img2vec.get_vec(GB1_cropped_image, tensor=False)
+                    cos_sim_B2_GB1 = cosine_similarity(vec_B2.reshape((1, -1)), vec_GB1.reshape((1, -1)))[0][0]    
+                
+                # Put all the cosinus similarity metrics here in the array cos_Sim
+                
+                cos_Sim.append([cos_sim_org_copy_org,cos_sim_org_HF,cos_sim_org_VF,cos_sim_copy_org_HF,cos_sim_copy_org_VF,cos_sim_HF_VF,cos_sim_labeled_org,cos_sim_labeled_copy_org,
+                cos_sim_labeled_HF,cos_sim_labeled_VF, cos_sim_org_C1, cos_sim_org_C2, cos_sim_org_C3, cos_sim_org_B1, cos_sim_org_B2, cos_sim_org_GB1, cos_sim_copy_org_C1, cos_sim_copy_org_C2,
+                cos_sim_copy_org_C3, cos_sim_copy_org_B1, cos_sim_copy_org_B2, cos_sim_copy_org_GB1, cos_sim_HF_C1, cos_sim_HF_C2, cos_sim_HF_C3, cos_sim_HF_B1, cos_sim_HF_B2,
+                cos_sim_HF_GB1, cos_sim_VF_C1, cos_sim_VF_C2, cos_sim_VF_C3, cos_sim_VF_B1, cos_sim_VF_B2 , cos_sim_VF_GB1, cos_sim_labeled_C1, cos_sim_labeled_C2, cos_sim_labeled_C3, cos_sim_labeled_B1,
+                cos_sim_labeled_B2, cos_sim_labeled_GB1, cos_sim_C1_C2, cos_sim_C1_C3,  cos_sim_C1_B1, cos_sim_C1_B2, cos_sim_C1_GB1, cos_sim_C2_B1, cos_sim_C2_B2, cos_sim_C2_GB1,
+                cos_sim_C3_B1, cos_sim_C3_B2, cos_sim_C3_GB1, cos_sim_B1_B2, cos_sim_B1_GB1, cos_sim_B2_GB1 ])
+                
+                
+                #print("\n-------------------------------- SIMILARITIES VALUES for image ",jj," cos_Sim=",cos_Sim,"---------------------\n")
+            #print("\n-------------------------------- SIMILARITIES MATRIX FOR THE BATCH cos_Sim=",cos_Sim,"---------------------\n")
+            logger.info("\n-------------------------------- SIMILARITIES MATRIX FOR THE BATCH cos_Sim={}".format(cos_Sim))
+            
+            
+            # Derive a Consistency Loss based on the similarity
+            # remove all values from the similarity scores that is inferior to 0
+            new_cos_Sim=[] # array of similarity scores filtered
+            for ll in range(len(cos_Sim)):
+                new_values=[]
+                eltt=cos_Sim[ll]
+                for nn in range(len(eltt)):
+                    if eltt[nn]>=0.2:
+                        new_values.append(eltt[nn])
+                new_cos_Sim.append(new_values)
+            #print("\n-------------------------------- FILTERED SIMILARITIES MATRIX FOR THE BATCH new_cos_Sim=",new_cos_Sim,"---------------------\n")
+             
+          
+            avg_cos_Sim=[] # the average similarity scores for each image of the whole batch
+            cst_loss_cos_Sim=[] # consistency loss derived from the whole batch
+            for kk in range(len(new_cos_Sim)):
+                avg=0
+                row_cos_Sim=new_cos_Sim[kk]
+                for kkk in range(len(row_cos_Sim)):
+                    # put a filtering condiction here for the similarity selection row_cos_Sim[kkk] if possible
+                    avg=avg + row_cos_Sim[kkk]
+                if len(row_cos_Sim)!=0:
+                    avg=avg/len(row_cos_Sim)
+                else:
+                    avg=0
+                    
+                avg_cos_Sim.append(avg)
+                cst_loss_cos_Sim.append(1-avg)
+                
+            # Compute average loss derived from constistency
+            avg_cst_loss_cos_Sim=0
+            for jjj in range(len(cst_loss_cos_Sim)):
+                avg_cst_loss_cos_Sim=avg_cst_loss_cos_Sim + cst_loss_cos_Sim[jjj]
+            avg_cst_loss_cos_Sim=avg_cst_loss_cos_Sim/len(cst_loss_cos_Sim)
+            
+            #print("\n-------------------------------- AVERAGE SIMILARITIES MATRIX FOR THE BATCH avg_cos_Sim=",avg_cos_Sim,"---------------------\n")
+            #print("\n-------------------------------- CONSTISTENCY LOSS DERIVED FROM SIMILARITY FOR THE BATCH cst_loss_cos_Sim=",cst_loss_cos_Sim,"---------------------\n")
+            #print("\n-------------------------------- AVERAGE CONSTISTENCY LOSS DERIVED FROM SIMILARITY FOR THE BATCH avg_cst_loss_cos_Sim=",avg_cst_loss_cos_Sim,"---------------------\n")
+             
             #  add pseudo-label to unlabeled data
 
             unlabel_data_q = self.add_label(
-                unlabel_data_q, joint_proposal_dict["proposals_pseudo_roih"]
+                unlabel_data_q, joint_proposal_dict["proposals_pseudo_roih"]  #---------------------- Here we can decide to add the pseudo labels or not to the initial labeled set for the student training based on the value of 'avg_cos_Sim' or 'avg_cst_loss_cos_Sim' 
             )
             unlabel_data_k = self.add_label(
                 unlabel_data_k, joint_proposal_dict["proposals_pseudo_roih"]
@@ -380,7 +1732,11 @@ class ActiveTeacherTrainer(DefaultTrainer):
                     return w
                 else:
                     raise NotImplementedError(method+" has not implemented")
-
+            
+            alpha=1
+            
+            print("---------------------- alpha =",alpha ,"----------------\n")
+            
             # weight losses
             loss_dict = {}
             for key in record_dict.keys():
@@ -392,15 +1748,22 @@ class ActiveTeacherTrainer(DefaultTrainer):
                         # loss_dict[key] = record_dict[key] * 0
                         loss_dict[key] = record_dict[key] * adjust_pseudo_weight(self.iter, self.max_iter, 1, method='cosine')
                     elif key[-6:] == "pseudo":  # unsupervised loss
+                        #print("\n-------------------------------- UNSUPERVISED LOSS record_dict=",record_dict[key],"---------------------\n")
+                        #print("-------------------- Hi unsupervised Loss here ! ---------------------\n")
                         loss_dict[key] = (
                             record_dict[key] *
                             self.cfg.SEMISUPNET.UNSUP_LOSS_WEIGHT
-                        )
+                        ) + avg_cst_loss_cos_Sim*alpha                      # add consistency loss here
+                        
+                        logger.info("\n-------------------------------- UNSUPERVISED LOSS Lu={}".format(record_dict[key]*self.cfg.SEMISUPNET.UNSUP_LOSS_WEIGHT))
+                        logger.info("\n-------------------------------- Lc or avg_cst_loss_cos_Sim={}".format(avg_cst_loss_cos_Sim*alpha))
                     else:  # supervised loss
                         loss_dict[key] = record_dict[key] * 1
-
+                        logger.info("\n-------------------------------- SUPERVISED LOSS Ls={}".format(record_dict[key]))
+            
             losses = sum(loss_dict.values())
-
+            #print("\n-------------------------------- TOTAL LOSSES with consistency loss=",losses,"---------------------\n")
+            
         metrics_dict = record_dict
         metrics_dict["data_time"] = data_time
         self._write_metrics(metrics_dict)
