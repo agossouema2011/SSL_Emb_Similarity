@@ -1,6 +1,6 @@
 # Improving pseudo-labels using the embeddings for semi-supervised pathology detection in Capsule Endoscopy
 This is an official implementation for ACM2025 paper ["Improving pseudo-labels using the embeddings for semi-supervised pathology
-detection in Capsule Endoscopy"](https://xxxx.pdf). 
+detection in Capsule Endoscopy"]([https://xxxx.pdf](https://github.com/agossouema2011/SSL_Emb_Similarity)). 
 
 
 ## Introduction
@@ -98,11 +98,11 @@ python tools/train_net_sets.py \
 
 ## Results
 - The results on **different datasets** is shown as below:
-<img width="" height="" alt="image" src="resultsTables/table1_acm_github.png" />
-<img width="" height="" alt="image" src="resultsTables/table2_acm_github.png" />
-<img width="" height="" alt="image" src="resultsTables/table3_4_acm_github.png" />
-<img width="4648" height="" alt="image" src="" />
-
+<img width="100%" height="100%" alt="image" src="resultsTables/table1_acm_github.png" />
+<img width="100%" height="100%" alt="image" src="resultsTables/table2_acm_github.png" />
+<img width="100%" height="100%" alt="image" src="resultsTables/table3_4_acm_github.png" />
+<img width="100%" height="100%" alt="image" src="resultsTables/fig3_4_acm_github.png" />
+<img width="100%" height="100%" alt="image" src="resultsTables/fig6_7_acm_github.png" />
 ## Citing 
 
 If you find our work useful in your research, please consider citing:
