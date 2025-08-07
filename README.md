@@ -73,7 +73,7 @@ python tools/train_net.py \
        SOLVER.IMG_PER_BATCH_LABEL 8 SOLVER.IMG_PER_BATCH_UNLABEL 8  OUTPUT_DIR output/coco/faster_rcnn_R_50_FPN_sup35_run1_16bs
 
 ```
-Note: You increase or decrease the batch size for labeled and unlabled depending on your machine processing capacity.
+Note: You can increase or decrease the batch size for labeled and unlabled depending on your machine processing capacity.
 
 ## Evaluation
 ```
@@ -98,21 +98,12 @@ python tools/train_net_sets.py \
 
 ## Results
 - The results on **different datasets** is shown as below:
+<img width="4648" height="45" alt="image" src="" />
+<img width="4648" height="45" alt="image" src="" />
+<img width="4648" height="45" alt="image" src="" />
+<img width="4648" height="45" alt="image" src="" />
 
-|                                         | GT      | AS      | Annotation | AP                                 | AP50           | AP75           | APs            | APm            | APl            |
-|-----------------------------------------|---------|---------|------------|------------------------------------|----------------|----------------|----------------|----------------|----------------|
-|                                         |         |         |            | SEE-AI Dataset |
-| Faster RCNN         | 100\%   | --      | --         | 33.60                              | 61.30          | 33.20          | 6.00           | 15.80          | 36.80          |
-| Unbiased Teacher  | 34.79\% | --      | 100\% PL   | 30.63                              | 55.92          | 28.81          | 16.79          | 17.37          | 33.72          |
-| Active  Teacher      | 34.79\% | 35.21\% | GT         | 38.65                              | 69.91          | 37.89   | 	19.82 | 26.21          | 41.27          |
-| DTA + AS (Ours)                         | 34.79\% | 35.21\% | GT         | 40.09                    | 73.00 | 37.44          | 15.98          | 26.89 | 42.34 |
-|                                         |         |         |            | Kvasir-Capsule |
-| Faster RCNN         | 100\%   | --      | --         | 57.30                              | 81.70          | 65.70          | 23.70          | 49.60          | 61.30          |
-| Unbiased Teacher  | 34.79\% | --      | 100\% PL   | 61.35                              | 91.28          | 69.32          | 39.30          | 55.76          | 65.20          |
-| Active Teacher       | 34.79\% | 35.21\% | GT         | 63.63                              | 94.02 | 70.95          | 35.33          | 58.84          | 69.62          |
-| DTA + AS (Ours)                         | 34.79\% | 35.21\% | GT         | 64.17                    | 93.25          | 74.32 | 43.45 | 58.89 | 70.73 |
-
-## Citing DTA+AS
+## Citing 
 
 If you find our work useful in your research, please consider citing:
 
