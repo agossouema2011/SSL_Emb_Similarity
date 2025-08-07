@@ -13,11 +13,6 @@ The overall of our **Bloc Diagram**.
 
 </p>
 
-## Important notes
-- Update "NUM_CLASSES: 8" in 'configs/coco/Base-RCNN-FPN.yaml' to fit the number of class of your dataset.
-- You can also update other parameters in the configuration file 'configs/coco/Base-RCNN-FPN.yaml' or 'configs/Base-RCNN-FPN.yaml'
-- Update "metadata" variable in 'tools/train_net.py' and 'tools/train_net_sets.py' according to the classes names of your dataset
-  
 ## Installation
 
 - Install **detectron2** following the [instructions](https://detectron2.readthedocs.io/tutorials/install.html).
@@ -75,10 +70,10 @@ mkdir dataseed/coco_pick
 python tools/train_net.py \
       --num-gpus 1 \
       --config configs/coco/faster_rcnn_R_50_FPN_sup35_run1.yaml \
-       SOLVER.IMG_PER_BATCH_LABEL 16 SOLVER.IMG_PER_BATCH_UNLABEL 16  OUTPUT_DIR output/coco/result_initial_faster_rcnn_R_50_FPN_sup35_run1_16bs
+       SOLVER.IMG_PER_BATCH_LABEL 8 SOLVER.IMG_PER_BATCH_UNLABEL 8  OUTPUT_DIR output/coco/faster_rcnn_R_50_FPN_sup35_run1_16bs
 
 ```
-
+Note: You increase or decrease the batch size for labeled and unlabled depending on your machine processing capacity.
 
 ## Evaluation
 ```
@@ -86,7 +81,7 @@ python tools/train_net.py \
       --eval-only \
       --num-gpus 1 \
       --config configs/coco/faster_rcnn_R_50_FPN_sup35_run1.yaml \
-       SOLVER.IMG_PER_BATCH_LABEL 16 SOLVER.IMG_PER_BATCH_UNLABEL 16  MODEL.WEIGHTS output/coco/result_final_faster_rcnn_R_50_FPN_sup35_run1_16bs/model_best.pth OUTPUT_DIR output/results
+       SOLVER.IMG_PER_BATCH_LABEL 8 SOLVER.IMG_PER_BATCH_UNLABEL 8  MODEL.WEIGHTS output/coco/faster_rcnn_R_50_FPN_sup35_run1_16bs/model_best.pth OUTPUT_DIR output/results
 
 ```
 ## Evaluation for each set :
@@ -96,7 +91,7 @@ python tools/train_net_sets.py \
       --eval-only \
       --num-gpus 1 \
       --config configs/coco/faster_rcnn_R_50_FPN_sup35_run1.yaml \
-       SOLVER.IMG_PER_BATCH_LABEL 16 SOLVER.IMG_PER_BATCH_UNLABEL 16  MODEL.WEIGHTS output/coco/result_final_faster_rcnn_R_50_FPN_sup35_run1_16bs/model_best.pth  OUTPUT_DIR output/set_name
+       SOLVER.IMG_PER_BATCH_LABEL 8 SOLVER.IMG_PER_BATCH_UNLABEL 8  MODEL.WEIGHTS output/coco/faster_rcnn_R_50_FPN_sup35_run1_16bs/model_best.pth  OUTPUT_DIR output/set_name
 
 ```
 
